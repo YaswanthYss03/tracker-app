@@ -1,0 +1,106 @@
+/* Pavakie admin theme: Ice Silver background, Deep Aubergine text and sidebar,
+   Marigold highlights. Prata for headings, DM Sans for everything else. */
+:root {
+  --bg: #DDE3E8;
+  --surface: #F7F9FA;
+  --surface-2: #E9EEF1;
+  --border: #C7CFD6;
+  --text: #3A0F34;
+  --muted: #6D5068;
+  --brand: #3A0F34;
+  --brand-strong: #2A0A26;
+  --brand-soft: #F3E7C2;
+  --accent: #EAAA00;
+  --sidebar: #3A0F34;
+  --sidebar-text: #E9DDE7;
+  --font: 'DM Sans', system-ui, sans-serif;
+  --heading: 'Prata', Georgia, serif;
+  --shadow: 0 1px 2px rgba(58, 15, 52, 0.06), 0 6px 18px rgba(58, 15, 52, 0.08);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1C0A1A;
+    --surface: #2B1128;
+    --surface-2: #3A1835;
+    --border: #4A2445;
+    --text: #E9EDF1;
+    --muted: #B8A9B5;
+    --brand: #EAAA00;
+    --brand-strong: #FFC93C;
+    --brand-soft: #4A3510;
+    --sidebar: #12060F;
+    --sidebar-text: #D9CCD6;
+    color-scheme: dark;
+  }
+}
+
+body { font-family: var(--font); }
+h1, h2, h3 { font-family: var(--heading); font-weight: 400; letter-spacing: 0.2px; }
+h1 { font-size: 30px; }
+
+.wordmark { font-family: 'Pinyon Script', cursive; font-size: 34px; line-height: 1; color: #fff; }
+.wordmark.big { font-size: 84px; }
+
+/* Primary buttons: marigold with aubergine text (readable on both themes) */
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #3A0F34; font-weight: 700; }
+.btn.primary:hover { background: #F5BC1F; border-color: #F5BC1F; }
+.pill.brand { background: var(--brand-soft); color: #6B4A00; }
+@media (prefers-color-scheme: dark) { .pill.brand { color: #FFD873; } }
+
+/* ---------- Shell: sidebar + page ---------- */
+.shell { display: flex; min-height: 100%; }
+.sidebar {
+  width: 248px; flex: none; background: var(--sidebar); color: var(--sidebar-text);
+  display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh;
+}
+.side-brand { display: flex; align-items: baseline; gap: 10px; padding: 24px 22px 18px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.side-tag { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--accent); }
+.menu-btn { display: none; margin-left: auto; background: none; border: 0; color: inherit; cursor: pointer; align-self: center; }
+.side-nav { display: flex; flex-direction: column; gap: 4px; padding: 16px 12px; flex: 1; }
+.side-nav a {
+  display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 10px;
+  color: var(--sidebar-text); font-weight: 500; position: relative;
+}
+.side-nav a:hover { background: rgba(255,255,255,.07); text-decoration: none; }
+.side-nav a.active { background: rgba(234,170,0,.16); color: #fff; }
+.side-nav a.active::before { content: ''; position: absolute; left: -12px; top: 8px; bottom: 8px; width: 4px; border-radius: 0 4px 4px 0; background: var(--accent); }
+.side-nav a.active svg { color: var(--accent); }
+.side-nav .count { margin-left: auto; background: var(--accent); color: #3A0F34; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 1px 8px; }
+.side-user { display: flex; align-items: center; gap: 10px; padding: 16px; border-top: 1px solid rgba(255,255,255,.08); }
+.side-user .avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: #3A0F34; display: grid; place-items: center; font-weight: 700; flex: none; }
+.side-user .who { min-width: 0; flex: 1; }
+.side-user .name { font-weight: 700; color: #fff; font-size: 14px; }
+.side-user .mail { font-size: 12px; opacity: .75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-user .logout { background: none; border: 0; color: inherit; cursor: pointer; padding: 6px; border-radius: 8px; }
+.side-user .logout:hover { background: rgba(255,255,255,.1); }
+
+.shell .page { flex: 1; min-width: 0; max-width: 1280px; padding: 32px 36px 64px; margin: 0; }
+
+/* Phones / small tablets: sidebar becomes a top bar with a menu */
+@media (max-width: 860px) {
+  .shell { flex-direction: column; }
+  .sidebar { width: 100%; height: auto; position: sticky; z-index: 20; }
+  .side-brand { padding: 14px 16px; border-bottom: 0; }
+  .menu-btn { display: block; }
+  .side-nav, .side-user { display: none; }
+  .sidebar.open .side-nav, .sidebar.open .side-user { display: flex; }
+  .side-nav a.active::before { display: none; }
+  .shell .page { padding: 20px 16px 48px; }
+}
+
+/* ---------- Login ---------- */
+.login-page { min-height: 100%; display: grid; grid-template-columns: 1.1fr 1fr; }
+.login-art {
+  background: radial-gradient(circle at 30% 20%, #5A1D50 0%, #3A0F34 55%, #24081F 100%);
+  color: #fff; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; padding: 40px;
+}
+.login-art p { margin: 0; letter-spacing: 4px; text-transform: uppercase; font-size: 13px; color: var(--accent); font-weight: 700; }
+.login-form { display: flex; align-items: center; justify-content: center; padding: 32px 16px; }
+.login-form .card { width: 100%; max-width: 380px; }
+@media (max-width: 860px) {
+  .login-page { grid-template-columns: 1fr; }
+  .login-art { padding: 36px 16px; }
+  .wordmark.big { font-size: 60px; }
+}

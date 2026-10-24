@@ -1,0 +1,344 @@
+// Database schema (PostgreSQL + TimescaleDB).
+//
+// `positions` is turned into a TimescaleDB hypertable (with compression and
+// retention policies) by hand-written SQL in the first migration, because
+// Prisma doesn't know about TimescaleDB. Bulk inserts into it use raw SQL.
+//
+// Changing the schema: edit this file, then generate a migration with
+//   npx prisma migrate dev --name <change>
+// (needs the local database running: docker compose up -d db)
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  user
+  admin
+}
+
+enum DeviceStatus {
+  inventory // registered by admin, not yet claimed by a customer
+  active // claimed by a customer
+  suspended // blocked: the gateway refuses its connections
+}
+
+enum AccessRole {
+  owner
+  viewer
+}
+
+enum CommandStatus {
+  sent
+  replied
+  timeout
+  failed
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  // null for accounts created with "Sign in with Google" (they can set one via Forgot password)
+  passwordHash String?  @map("password_hash")
+  // Google account id ("sub") once the user signed in with Google
+  googleId     String?  @unique @map("google_id")
+  name         String?
+  role         Role     @default(user)
+  // When the user accepted the terms & privacy policy (required at signup, DPDP Act)
+  termsAcceptedAt DateTime @map("terms_accepted_at") @db.Timestamptz(3)
+  // Set when the email was confirmed with a code (null = not verified yet)
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(3)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  access        DeviceAccess[]
+  pushTokens    PushToken[]
+  refreshTokens RefreshToken[]
+  passwordResets PasswordReset[]
+  emailVerifications EmailVerification[]
+  shareLinks    ShareLink[]
+  commands      CommandLog[]
+  inquiries     Inquiry[]
+
+  @@map("users")
+}
+
+model Device {
+  id                 String       @id @default(uuid()) @db.Uuid
+  imei               String       @unique
+  simNumber          String?      @map("sim_number")
+  model              String       @default("GT06N")
+  activationCodeHash String       @map("activation_code_hash")
+  status             DeviceStatus @default(inventory)
+  name               String?
+  icon               String?
+  speedLimitKmh      Int?         @map("speed_limit_kmh") @db.SmallInt
+  timezone           String       @default("Asia/Kolkata")
+
+  // Brute-force protection for claiming with IMEI + activation code (stage 2)
+  failedClaimAttempts Int       @default(0) @map("failed_claim_attempts")
+  claimLockedUntil    DateTime? @map("claim_locked_until") @db.Timestamptz(3)
+
+  // Latest known state, so "live" queries never scan the positions table.
+  lastLat          Float?    @map("last_lat")
+  lastLon          Float?    @map("last_lon")
+  lastSpeed        Int?      @map("last_speed") @db.SmallInt
+  lastCourse       Int?      @map("last_course") @db.SmallInt
+  lastSatellites   Int?      @map("last_satellites") @db.SmallInt
+  lastGpsTime      DateTime? @map("last_gps_time") @db.Timestamptz(3)
+  lastAcc          Boolean?  @map("last_acc")
+  lastCharging     Boolean?  @map("last_charging")
+  lastBatteryLevel Int?      @map("last_battery_level") @db.SmallInt // 0-6 from the device
+  lastGsmSignal    Int?      @map("last_gsm_signal") @db.SmallInt // 0-4 from the device
+  lastSeenAt       DateTime? @map("last_seen_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  access     DeviceAccess[]
+  positions  Position[]
+  trips      Trip[]
+  dailyStats DailyStat[]
+  events     Event[]
+  geofences  Geofence[]
+  shareLinks ShareLink[]
+  commands   CommandLog[]
+
+  @@index([status])
+  @@map("devices")
+}
+
+model DeviceAccess {
+  deviceId  String     @map("device_id") @db.Uuid
+  userId    String     @map("user_id") @db.Uuid
+  role      AccessRole
+  notify    Boolean    @default(true)
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([deviceId, userId])
+  @@index([userId])
+  @@map("device_access")
+}
+
+// TimescaleDB hypertable (see migration SQL). One row per stored GPS point.
+model Position {
+  deviceId   String   @map("device_id") @db.Uuid
+  gpsTime    DateTime @map("gps_time") @db.Timestamptz(3)
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz(3)
+  lat        Float
+  lon        Float
+  speed      Int      @db.SmallInt // km/h
+  course     Int      @db.SmallInt // degrees
+  satellites Int      @db.SmallInt
+  valid      Boolean
+  acc        Boolean?
+  extra      Json?    @db.JsonB // cell tower, protocol, re-upload flag
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@id([deviceId, gpsTime])
+  @@map("positions")
+}
+
+model Trip {
+  id         String    @id @default(uuid()) @db.Uuid
+  deviceId   String    @map("device_id") @db.Uuid
+  startTime  DateTime  @map("start_time") @db.Timestamptz(3)
+  endTime    DateTime? @map("end_time") @db.Timestamptz(3) // null while the trip is in progress
+  startLat   Float     @map("start_lat")
+  startLon   Float     @map("start_lon")
+  endLat     Float?    @map("end_lat")
+  endLon     Float?    @map("end_lon")
+  distanceM  Int       @default(0) @map("distance_m")
+  maxSpeed   Int       @default(0) @map("max_speed") @db.SmallInt
+  avgSpeed   Int       @default(0) @map("avg_speed") @db.SmallInt
+  durationS  Int       @default(0) @map("duration_s")
+  idleS      Int       @default(0) @map("idle_s")
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, startTime(sort: Desc)])
+  @@map("trips")
+}
+
+model DailyStat {
+  deviceId   String   @map("device_id") @db.Uuid
+  day        DateTime @db.Date // in the device's timezone
+  distanceM  Int      @default(0) @map("distance_m")
+  maxSpeed   Int      @default(0) @map("max_speed") @db.SmallInt
+  drivingS   Int      @default(0) @map("driving_s")
+  idleS      Int      @default(0) @map("idle_s")
+  tripsCount Int      @default(0) @map("trips_count") @db.SmallInt
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@id([deviceId, day])
+  @@map("daily_stats")
+}
+
+model Event {
+  id       String   @id @default(uuid()) @db.Uuid
+  deviceId String   @map("device_id") @db.Uuid
+  time     DateTime @db.Timestamptz(3)
+  type     String // ignition_on, overspeed, geofence_enter, power_cut, sos, offline, ...
+  lat      Float?
+  lon      Float?
+  payload  Json?    @db.JsonB
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, time(sort: Desc)])
+  @@map("events")
+}
+
+model Geofence {
+  id           String   @id @default(uuid()) @db.Uuid
+  deviceId     String   @map("device_id") @db.Uuid
+  name         String
+  type         String // circle | polygon
+  // circle: {"lat":..,"lon":..}; polygon: [[lat,lon], ...]. Checked in app code.
+  geometry     Json     @db.JsonB
+  radiusM      Int?     @map("radius_m")
+  alertOnEnter Boolean  @default(true) @map("alert_on_enter")
+  alertOnExit  Boolean  @default(true) @map("alert_on_exit")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+  @@map("geofences")
+}
+
+model ShareLink {
+  token     String    @id
+  deviceId  String    @map("device_id") @db.Uuid
+  createdBy String    @map("created_by") @db.Uuid
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+  @@map("share_links")
+}
+
+model PushToken {
+  token     String   @id
+  userId    String   @map("user_id") @db.Uuid
+  platform  String // android | ios | web
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_tokens")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model CommandLog {
+  id          String        @id @default(uuid()) @db.Uuid
+  deviceId    String        @map("device_id") @db.Uuid
+  userId      String?       @map("user_id") @db.Uuid // null = sent with the admin key
+  command     String
+  response    String?
+  status      CommandStatus @default(sent)
+  sentAt      DateTime      @default(now()) @map("sent_at") @db.Timestamptz(3)
+  respondedAt DateTime?     @map("responded_at") @db.Timestamptz(3)
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([deviceId, sentAt(sort: Desc)])
+  @@map("commands_log")
+}
+
+// Unknown or unparseable packets, kept 7 days to debug firmware differences.
+model RawPacket {
+  id         BigInt   @id @default(autoincrement())
+  imei       String?
+  remote     String
+  protocol   Int?     @db.SmallInt
+  hex        String
+  reason     String
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz(3)
+
+  @@index([receivedAt])
+  @@map("raw_packets")
+}
+
+// "Forgot password" codes: 6 digits, stored hashed, valid 15 minutes, max 5 tries.
+model PasswordReset {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  codeHash  String    @map("code_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  attempts  Int       @default(0)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("password_resets")
+}
+
+// Sign-up email confirmation codes: 6 digits, hashed, valid 15 minutes, max 5 tries.
+model EmailVerification {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  codeHash  String    @map("code_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  attempts  Int       @default(0)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("email_verifications")
+}
+
+// "Contact us" messages and "Partner with us" requests from the app/website.
+model Inquiry {
+  id        String   @id @default(uuid()) @db.Uuid
+  kind      String // contact | partner
+  userId    String?  @map("user_id") @db.Uuid // set when sent while logged in
+  name      String
+  email     String
+  phone     String?
+  company   String?
+  city      String?
+  partnerType String? @map("partner_type") // dealer | installer | fleet | reseller | other
+  message   String
+  status    String   @default("new") // new | done
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@map("inquiries")
+}

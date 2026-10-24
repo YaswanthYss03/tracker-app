@@ -1,0 +1,13 @@
+node_modules
+.env
+.git
+npm-debug.log
+secrets
+itest
+backups
+deploy/*.local
+web/node_modules
+web/dist
+admin/node_modules
+admin/dist
+mobile

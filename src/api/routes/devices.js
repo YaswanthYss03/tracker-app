@@ -1,0 +1,111 @@
+/**
+ * /api/v1/devices — a customer's trackers.
+ *
+ *   GET    /                              trackers I own or can view (with live state)
+ *   POST   /claim                         { imei, activationCode, name?, vehicleType? } -> 201 (200 if already mine)
+ *   GET    /:deviceId                     one tracker                         (owner, viewer)
+ *   GET    /:deviceId/live                live state only (light, for polling) (owner, viewer)
+ *   PATCH  /:deviceId                     { name, icon (vehicle type), speedLimitKmh, timezone } (owner)
+ *   PATCH  /:deviceId/notifications       { enabled } my alert setting         (owner, viewer)
+ *   GET    /:deviceId/members             who has access                       (owner)
+ *   POST   /:deviceId/viewers             { email } share with someone         (owner)
+ *   DELETE /:deviceId/members/:userId     remove a viewer / leave              (owner, or the viewer)
+ *   POST   /:deviceId/release             { confirmImei } give the tracker up  (owner)
+ *
+ * Device IDs are internal UUIDs; the IMEI is only used once, to claim.
+ */
+const express = require('express');
+const { parse, wrap, z, schemas, isValidTimezone } = require('../validate');
+const { customerDevice, liveState, member } = require('../dto');
+const { requireDeviceAccess } = require('../middleware');
+const { badRequest } = require('../../lib/errors');
+
+// Vehicle type is stored in devices.icon; apps show a matching map icon.
+const VEHICLE_TYPES = ['car', 'bike', 'scooter', 'bus', 'van', 'truck', 'auto', 'bicycle', 'tractor', 'other'];
+const vehicleType = z.enum(VEHICLE_TYPES);
+
+const claimSchema = z.object({
+  imei: z.string().trim().regex(/^\d{15}$/, 'must be the 15-digit IMEI'),
+  activationCode: z.string().trim().min(5).max(20),
+  name: z.string().trim().min(1).max(80).optional(),
+  vehicleType: vehicleType.optional(),
+});
+const updateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80).nullable().optional(),
+    icon: vehicleType.nullable().optional(), // vehicle type
+    speedLimitKmh: z.number().int().min(10).max(250).nullable().optional(),
+    timezone: z.string().refine(isValidTimezone, 'unknown timezone').optional(),
+  })
+  .strict()
+  .refine((v) => Object.keys(v).length > 0, 'nothing to update');
+
+function createDevicesRouter({ ownership, cache, limits }) {
+  const router = express.Router();
+  const viewer = requireDeviceAccess(ownership, 'viewer');
+  const owner = requireDeviceAccess(ownership, 'owner');
+  const dto = (device, access) => customerDevice(device, access, { cache });
+
+  router.get('/', wrap(async (req, res) => {
+    const rows = await ownership.listForUser(req.user.id);
+    res.json({ data: rows.map((a) => dto(a.device, a)), count: rows.length });
+  }));
+
+  router.post('/claim', limits.claim, wrap(async (req, res) => {
+    const body = parse(claimSchema, req.body);
+    let { device, alreadyOwned } = await ownership.claim(req.user.id, body);
+    if (body.vehicleType && !alreadyOwned) device = await ownership.updateDevice(device.id, { icon: body.vehicleType });
+    const access = await ownership.getAccess(req.user.id, device.id);
+    res.status(alreadyOwned ? 200 : 201).json({ data: dto(device, access) });
+  }));
+
+  router.get('/:deviceId', viewer, (req, res) => {
+    res.json({ data: dto(req.device, req.access) });
+  });
+
+  router.get('/:deviceId/live', viewer, (req, res) => {
+    res.json({ data: { id: req.device.id, ...liveState(req.device, cache) } });
+  });
+
+  router.patch('/:deviceId', owner, wrap(async (req, res) => {
+    const patch = parse(updateSchema, req.body);
+    const device = await ownership.updateDevice(req.device.id, patch);
+    res.json({ data: dto(device, req.access) });
+  }));
+
+  router.patch('/:deviceId/notifications', viewer, wrap(async (req, res) => {
+    const { enabled } = parse(z.object({ enabled: z.boolean() }), req.body);
+    const access = await ownership.setNotify(req.device.id, req.user.id, enabled);
+    res.json({ data: { notify: access.notify } });
+  }));
+
+  router.get('/:deviceId/members', owner, wrap(async (req, res) => {
+    const rows = await ownership.listMembers(req.device.id);
+    res.json({ data: rows.map(member), count: rows.length });
+  }));
+
+  router.post('/:deviceId/viewers', owner, wrap(async (req, res) => {
+    const { email } = parse(z.object({ email: schemas.email }), req.body);
+    const access = await ownership.addViewer(req.device.id, req.user.id, email);
+    res.status(201).json({ data: member(access) });
+  }));
+
+  router.delete('/:deviceId/members/:userId', viewer, wrap(async (req, res) => {
+    const { userId } = parse(z.object({ userId: schemas.uuid }), req.params);
+    await ownership.removeMember(req.device.id, req.access, userId);
+    res.status(204).end();
+  }));
+
+  router.post('/:deviceId/release', owner, wrap(async (req, res) => {
+    const { confirmImei } = parse(z.object({ confirmImei: z.string() }), req.body);
+    if (confirmImei !== req.device.imei) {
+      throw badRequest('confirmImei must match the tracker IMEI (this deletes its history)');
+    }
+    await ownership.release(req.device.id);
+    res.status(204).end();
+  }));
+
+  return router;
+}
+
+module.exports = { createDevicesRouter };

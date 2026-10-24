@@ -1,0 +1,98 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:transparent}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+// Renders each job (model + view) to a transparent PNG and POSTs it to the tool's server.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const jobs = await (await fetch('/jobs.json')).json();
+const loader = new GLTFLoader();
+const cache = {};
+
+for (const job of jobs) {
+  try {
+    const gltf = cache[job.model] ??= await loader.loadAsync(job.model);
+    const png = render(gltf.scene.clone(true), job);
+    await fetch('/save?name=' + encodeURIComponent(job.out), { method: 'POST', body: png });
+  } catch (err) {
+    await fetch('/log', { method: 'POST', body: job.out + ': ' + err.message });
+  }
+}
+await fetch('/done', { method: 'POST' });
+
+function render(model, { size, view, yaw = 0 }) {
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(1);
+  renderer.setSize(size, size);
+  renderer.setClearColor(0x000000, 0);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.body.innerHTML = '';
+  document.body.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  model.rotation.y = (yaw * Math.PI) / 180;
+  model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  scene.add(model);
+
+  // Centre the model on the ground at the origin.
+  let box = new THREE.Box3().setFromObject(model);
+  const centre = box.getCenter(new THREE.Vector3());
+  model.position.x -= centre.x;
+  model.position.z -= centre.z;
+  model.position.y -= box.min.y;
+  box = new THREE.Box3().setFromObject(model);
+  const radius = box.getSize(new THREE.Vector3()).length() / 2;
+
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa6b8, 2.0));
+  const sun = new THREE.DirectionalLight(0xffffff, 2.4);
+  sun.position.set(radius * 1.2, radius * 3, radius * 1.6);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.radius = 6;
+  sun.shadow.bias = -0.0005;
+  Object.assign(sun.shadow.camera, { left: -radius * 2, right: radius * 2, top: radius * 2, bottom: -radius * 2, near: 0.01, far: radius * 10 });
+  scene.add(sun);
+
+  // Ground that only shows the shadow.
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(radius * 8, radius * 8), new THREE.ShadowMaterial({ opacity: view === 'top' ? 0.3 : 0.25 }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, radius * 20);
+  if (view === 'top') {
+    cam.position.set(0, radius * 6, 0);
+    cam.up.set(0, 0, 1); // vehicle front (+Z) points up in the picture
+  } else {
+    // Three-quarter view from the front-right, a little from above.
+    cam.position.set(radius * 3.2, radius * 2.3, radius * 3.2).applyAxisAngle(new THREE.Vector3(0, 1, 0), (22 * Math.PI) / 180);
+  }
+  cam.lookAt(0, (box.max.y - box.min.y) * (view === 'top' ? 0 : 0.35), 0);
+  cam.updateMatrixWorld();
+
+  // Fit the frustum to the model + its shadow (8% padding).
+  const pts = [];
+  for (const x of [box.min.x, box.max.x]) for (const y of [0, box.max.y]) for (const z of [box.min.z, box.max.z]) pts.push(new THREE.Vector3(x, y, z));
+  const inv = cam.matrixWorldInverse;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of pts) {
+    const v = p.clone().applyMatrix4(inv);
+    minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x); minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y);
+  }
+  const half = Math.max(maxX - minX, maxY - minY) / 2 * 1.12;
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  Object.assign(cam, { left: cx - half, right: cx + half, top: cy + half, bottom: cy - half });
+  cam.updateProjectionMatrix();
+
+  renderer.render(scene, cam);
+  const data = renderer.domElement.toDataURL('image/png');
+  renderer.dispose();
+  return data;
+}
+</script>
+</body></html>

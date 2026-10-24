@@ -1,0 +1,22 @@
+node_modules/
+.env
+secrets/
+backups/
+.env.bak-*
+*.dump
+
+# Build outputs
+web/dist/
+admin/dist/
+
+# Mobile: built APKs and the source 3D model kit (rendered PNGs in mobile/assets/vehicles are kept)
+mobile/*.apk
+mobile/*.zip
+mobile/kenney_car-kit/
+# Loose copy of the Kenney kit extracted straight into mobile/ (duplicate of mobile/kenney_car-kit)
+mobile/Models/
+mobile/Previews/
+mobile/License.txt
+mobile/Overview.html
+mobile/Preview.png
+mobile/*.url

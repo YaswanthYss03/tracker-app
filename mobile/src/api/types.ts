@@ -1,0 +1,85 @@
+// Shapes returned by the backend (see src/api/dto.js on the server).
+
+export type User = {
+  id: string;
+  email: string;
+  name: string | null;
+  role: 'user' | 'admin';
+  createdAt: string;
+  /** false for accounts created with Google that never set a password */
+  hasPassword?: boolean;
+  googleLinked?: boolean;
+};
+
+export type Live = {
+  deviceId?: string;
+  lat: number | null;
+  lon: number | null;
+  speed: number | null;
+  heading: number | null;
+  satellites: number | null;
+  gpsTime: string | null;
+  ignition: boolean | null;
+  externalPower: boolean | null;
+  batteryLevel: number | null;
+  batteryPercent: number | null;
+  gsmSignal: number | null;
+  lastSeenAt: string | null;
+  online: boolean;
+};
+
+export type Device = {
+  id: string;
+  name: string | null;
+  icon: string | null;
+  model: string;
+  imei: string;
+  simNumber?: string | null;
+  status: 'inventory' | 'active' | 'suspended';
+  role: 'owner' | 'viewer';
+  notify: boolean;
+  speedLimitKmh: number | null;
+  timezone: string;
+  live: Live;
+};
+
+export type AlertEvent = {
+  id: string;
+  deviceId: string;
+  type: string;
+  time: string;
+  lat: number | null;
+  lon: number | null;
+  details: Record<string, any> | null;
+};
+
+export type Trip = {
+  id: string;
+  startTime: string;
+  endTime: string | null;
+  start: { lat: number; lon: number };
+  end: { lat: number; lon: number } | null;
+  distanceKm: number;
+  maxSpeed: number;
+  avgSpeed: number;
+  durationS: number;
+  idleS: number;
+  inProgress: boolean;
+};
+
+export type RoutePoint = { t: string; lat: number; lon: number; speed: number; heading: number; ignition: boolean | null };
+
+export type Geofence = {
+  id: string;
+  name: string;
+  type: 'circle' | 'polygon';
+  center?: { lat: number; lon: number };
+  radiusM?: number;
+  points?: [number, number][];
+  alertOnEnter: boolean;
+  alertOnExit: boolean;
+};
+
+export type Member = { userId: string; email: string; name: string | null; role: 'owner' | 'viewer'; since: string };
+
+export const deviceName = (d: Pick<Device, 'name' | 'imei'>) => d.name || `Tracker ${d.imei.slice(-4)}`;

@@ -1,0 +1,35 @@
+# HTTPS reverse proxy in front of the API and the live-map WebSocket.
+#
+# Set API_DOMAIN in .env (e.g. api.yourbrand.in) and point its DNS A record
+# at the server: Caddy then gets and renews a Let's Encrypt certificate
+# automatically. With the default "localhost" it uses a self-signed
+# certificate for local testing.
+#
+# ADMIN_DOMAIN (e.g. admin.yourbrand.in) serves the admin website from the
+# same app; it needs its own DNS record pointing at the server too.
+#
+# The tracker port (5023, raw TCP) does not go through Caddy.
+
+{$API_DOMAIN:localhost}, {$ADMIN_DOMAIN:admin.localhost} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	# Request size limit (the API accepts at most 100 kB JSON anyway)
+	request_body {
+		max_size 1MB
+	}
+
+	reverse_proxy app:3000 {
+		# While the app restarts (deploys), hold requests up to 10 s instead of failing.
+		lb_try_duration 10s
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
