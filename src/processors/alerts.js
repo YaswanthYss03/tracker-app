@@ -7,6 +7,9 @@
  *   sos, power_cut, vibration,   alarms reported by the tracker itself
  *   low_battery, power_off
  *   offline / online             no packet for OFFLINE_AFTER_MIN / first packet after that
+ *   long_stop                    parked (ignition off) for 4 h while still connected; once per stop
+ *   gps_lost                     ignition on and still reporting, but no GPS fix for 15 min;
+ *                                once until a new position arrives
  *   geofence_enter / _exit       fired by the geofence monitor through fire()
  *
  * Only claimed (active) trackers get alerts; re-uploaded (old) points never
@@ -16,6 +19,8 @@
 const { EventEmitter } = require('events');
 
 const OVERSPEED_AFTER_MS = 30_000;
+const LONG_STOP_MS = 4 * 3_600_000;
+const GPS_LOST_MS = 15 * 60_000;
 const OVERSPEED_REARM_MS = 60_000;
 const DEVICE_ALARMS = new Set(['sos', 'power_cut', 'vibration', 'low_battery', 'power_off']);
 const COOLDOWN_MS = {
@@ -40,7 +45,10 @@ class AlertEngine extends EventEmitter {
   st(deviceId) {
     let s = this.devices.get(deviceId);
     if (!s) {
-      s = { acc: undefined, overSince: null, overActive: false, belowSince: null, offline: false, lastFired: {} };
+      s = {
+        acc: undefined, overSince: null, overActive: false, belowSince: null, offline: false, lastFired: {},
+        offSince: null, longStopFired: false, gpsLost: false,
+      };
       this.devices.set(deviceId, s);
     }
     return s;
@@ -58,6 +66,7 @@ class AlertEngine extends EventEmitter {
     if (!e.isLatest || e.reupload || !this.isActive(e.deviceId)) return;
     const p = e.point;
     this.markSeen(e.deviceId);
+    this.st(e.deviceId).gpsLost = false; // a fresh position: GPS is back
     this.updateIgnition(e.deviceId, p.acc, p.gpsTime, p);
     this.checkOverspeed(e.deviceId, p);
   }
@@ -77,12 +86,16 @@ class AlertEngine extends EventEmitter {
   updateIgnition(deviceId, acc, time, point) {
     if (acc === null || acc === undefined) return;
     const s = this.st(deviceId);
+    const t = time ? new Date(time).getTime() : this.now();
     if (s.acc === undefined) {
       s.acc = acc; // first value seen: no event
+      if (!acc) s.offSince = t;
       return;
     }
     if (acc !== s.acc) {
       s.acc = acc;
+      s.offSince = acc ? null : t;
+      s.longStopFired = false;
       this.fire(deviceId, acc ? 'ignition_on' : 'ignition_off', { time, point });
     }
   }
@@ -124,12 +137,13 @@ class AlertEngine extends EventEmitter {
     }
   }
 
-  /** Run every minute with all live states. */
+  /** Run every minute with all live states: offline, long stop, GPS lost. */
   checkOffline(states) {
     const now = this.now();
     for (const state of states) {
       if (state.status !== 'active' || !state.lastSeenAt) continue;
       const s = this.st(state.deviceId);
+      this.checkStale(state, s, now);
       if (!s.offline && now - state.lastSeenAt.getTime() >= this.offlineAfterMs) {
         s.offline = true;
         this.fire(state.deviceId, 'offline', {
@@ -138,6 +152,25 @@ class AlertEngine extends EventEmitter {
           payload: { lastSeenAt: state.lastSeenAt },
         });
       }
+    }
+  }
+
+  checkStale(state, s, now) {
+    const connected = now - state.lastSeenAt.getTime() < this.offlineAfterMs;
+    if (!connected || s.offline) return;
+    const point = state.lat != null ? { lat: state.lat, lon: state.lon } : null;
+
+    if (s.acc === false && s.offSince && !s.longStopFired && now - s.offSince >= LONG_STOP_MS) {
+      s.longStopFired = true;
+      this.fire(state.deviceId, 'long_stop', {
+        time: new Date(now), point, payload: { since: new Date(s.offSince), minutes: Math.round((now - s.offSince) / 60_000) },
+      });
+    }
+
+    const lastFix = state.gpsTime ? new Date(state.gpsTime).getTime() : null;
+    if (s.acc === true && lastFix && !s.gpsLost && now - lastFix >= GPS_LOST_MS) {
+      s.gpsLost = true;
+      this.fire(state.deviceId, 'gps_lost', { time: new Date(now), point, payload: { lastFixAt: new Date(lastFix) } });
     }
   }
 
@@ -175,4 +208,4 @@ class AlertEngine extends EventEmitter {
   }
 }
 
-module.exports = { AlertEngine, DEVICE_ALARMS, COOLDOWN_MS };
+module.exports = { AlertEngine, DEVICE_ALARMS, COOLDOWN_MS, LONG_STOP_MS, GPS_LOST_MS };

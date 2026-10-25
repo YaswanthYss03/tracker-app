@@ -38,6 +38,14 @@ function publicUser(user) {
     createdAt: user.createdAt,
     hasPassword: Boolean(user.passwordHash),
     googleLinked: Boolean(user.googleId),
+    phone: user.phone ?? null,
+    company: user.company ?? null,
+    alerts: {
+      offline: user.alertOffline ?? true,
+      longStop: user.alertLongStop ?? true,
+      gpsLost: user.alertGpsLost ?? true,
+      quietHours: user.quietHours ?? false,
+    },
   };
 }
 
@@ -252,8 +260,16 @@ function createAuthService({
     return user;
   }
 
-  async function updateProfile(userId, { name }) {
-    const user = await prisma.user.update({ where: { id: userId }, data: { name } });
+  async function updateProfile(userId, { name, phone, company, alerts }) {
+    const data = {};
+    if (name !== undefined) data.name = name;
+    if (phone !== undefined) data.phone = phone;
+    if (company !== undefined) data.company = company;
+    if (alerts?.offline !== undefined) data.alertOffline = alerts.offline;
+    if (alerts?.longStop !== undefined) data.alertLongStop = alerts.longStop;
+    if (alerts?.gpsLost !== undefined) data.alertGpsLost = alerts.gpsLost;
+    if (alerts?.quietHours !== undefined) data.quietHours = alerts.quietHours;
+    const user = await prisma.user.update({ where: { id: userId }, data });
     return publicUser(user);
   }
 

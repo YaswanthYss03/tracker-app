@@ -50,6 +50,13 @@ model User {
   googleId     String?  @unique @map("google_id")
   name         String?
   role         Role     @default(user)
+  phone        String?
+  company      String?
+  // Alert settings (push only; alerts are always recorded)
+  alertOffline  Boolean @default(true) @map("alert_offline")
+  alertLongStop Boolean @default(true) @map("alert_long_stop")
+  alertGpsLost  Boolean @default(true) @map("alert_gps_lost")
+  quietHours    Boolean @default(false) @map("quiet_hours") // no pushes 22:00-07:00 except SOS / power cut
   // When the user accepted the terms & privacy policy (required at signup, DPDP Act)
   termsAcceptedAt DateTime @map("terms_accepted_at") @db.Timestamptz(3)
   // Set when the email was confirmed with a code (null = not verified yet)

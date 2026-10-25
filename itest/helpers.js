@@ -95,11 +95,21 @@ async function startApp({ requireEmailVerification = false, adminDomain = '' } =
     shareLinkRevoked: (t) => realtime?.revokeShareLink(t),
   };
 
+  // Real notifier (for /me/push-test) sending through a fake Firebase.
+  const { createNotifier } = require('../src/notifications/notifier');
+  const fakeFcm = {
+    enabled: true,
+    sent: [],
+    send: async (tokens, msg) => { fakeFcm.sent.push({ tokens, ...msg }); return { sent: tokens.length, deadTokens: [] }; },
+  };
+  const testNotifier = createNotifier({ fcm: fakeFcm, logger });
+
   const app = createApp({
     config: { ...config, adminDomain, google: { clientIds: ['test-web-client.apps.googleusercontent.com'] }, support: { email: 'support@example.com', phone: '+91 90000 00000', whatsapp: '', address: '' } },
     logger, pingDatabase, cache, registry, ownership, authService, processors, hooks, writer, ingest, mailer,
     rateLimits: { register: 10_000, claim: 10_000, commands: 10_000, forgotPassword: 10_000, resetPassword: 10_000, google: 10_000, inquiry: 10_000 }, // tests sign up many users from one IP
     gateway: { stats: () => ({ connections: 0, devicesConnected: 0 }) },
+    notifier: testNotifier,
     // Fake address lookup (no calls to OpenStreetMap from tests).
     geocoder: { reverse: async (lat, lon) => (lat > 0 ? `Test Road, near ${lat.toFixed(2)},${lon.toFixed(2)}` : null) },
   });
@@ -125,6 +135,7 @@ async function startApp({ requireEmailVerification = false, adminDomain = '' } =
   return {
     api,
     base,
+    fakeFcm,
     prisma,
     cache,
     ingest,

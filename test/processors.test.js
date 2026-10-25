@@ -6,7 +6,7 @@ const { TripTracker, localDay } = require('../src/processors/trips');
 const { AlertEngine } = require('../src/processors/alerts');
 const { GeofenceMonitor } = require('../src/processors/geofences');
 const { simplify, simplifyToMax, pointInPolygon, insideGeofence, haversineMeters } = require('../src/lib/geo');
-const { message } = require('../src/notifications/notifier');
+const { message, inQuietHours } = require('../src/notifications/notifier');
 const { createFcm } = require('../src/notifications/fcm');
 
 const logger = pino({ level: 'silent' });
@@ -211,6 +211,65 @@ test('alerts: offline after 10 min of silence, online on the next packet', async
   assert.deepEqual(a.types(), ['offline', 'online']);
 });
 
+test('alerts: long stop after 4 h parked (once per stop), only while connected', async () => {
+  const a = makeAlerts();
+  const state = a.states[DEV];
+  a.engine.onPosition(pos(0, { acc: true }));
+  a.engine.onStatus({ deviceId: DEV, acc: false }); // parked at T0
+  const tick = (min) => {
+    a.setNow(T0 + min * 60_000);
+    state.lastSeenAt = new Date(T0 + min * 60_000 - 30_000); // heartbeats keep coming
+    a.engine.checkOffline([state]);
+  };
+  tick(200);
+  tick(241);
+  tick(300); // no duplicate
+  await flush();
+  assert.deepEqual(a.types(), ['ignition_off', 'long_stop']);
+  assert.equal(a.saved[1].payload.minutes, 241);
+
+  // Driving again re-arms it; a disconnected tracker gets "offline", not "long stop".
+  a.engine.onStatus({ deviceId: DEV, acc: true });
+  a.engine.onStatus({ deviceId: DEV, acc: false });
+  a.setNow(T0 + 600 * 60_000);
+  state.lastSeenAt = new Date(T0 + 400 * 60_000);
+  a.engine.checkOffline([state]);
+  await flush();
+  assert.deepEqual(a.types(), ['ignition_off', 'long_stop', 'ignition_on', 'ignition_off', 'offline']);
+});
+
+test('alerts: GPS lost when the ignition is on and no fix for 15 min; re-armed by a new position', async () => {
+  const a = makeAlerts();
+  const state = a.states[DEV];
+  a.engine.onPosition(pos(0, { acc: false }));
+  a.engine.onPosition(pos(10, { acc: true }));
+  state.gpsTime = new Date(T0 + 10_000);
+  const tick = (min) => {
+    a.setNow(T0 + min * 60_000);
+    state.lastSeenAt = new Date(T0 + min * 60_000 - 20_000);
+    a.engine.checkOffline([state]);
+  };
+  tick(10);
+  tick(16);
+  tick(20); // once
+  a.engine.onPosition(pos(21 * 60, { acc: true }));
+  state.gpsTime = new Date(T0 + 21 * 60_000);
+  tick(30);
+  tick(37);
+  await flush();
+  assert.deepEqual(a.types(), ['ignition_on', 'gps_lost', 'gps_lost']);
+
+  // Parked (ignition off): a stale fix is normal, no alert.
+  const b = makeAlerts();
+  b.engine.onPosition(pos(0, { acc: false }));
+  b.states[DEV].gpsTime = new Date(T0);
+  b.setNow(T0 + 60 * 60_000);
+  b.states[DEV].lastSeenAt = new Date(T0 + 59 * 60_000);
+  b.engine.checkOffline([b.states[DEV]]);
+  await flush();
+  assert.deepEqual(b.types(), []);
+});
+
 // ---------------- geofences ----------------
 
 test('geofences: enter/exit need two points in a row; first point is silent', async () => {
@@ -236,11 +295,22 @@ test('geofences: enter/exit need two points in a row; first point is silent', as
 
 // ---------------- notifications ----------------
 
-test('notification texts', () => {
-  assert.deepEqual(message({ type: 'overspeed', payload: { speed: 82, limit: 60 } }, 'Ravi bike'), {
-    title: 'Ravi bike: overspeed', body: 'Going 82 km/h (limit 60 km/h)',
+test('notification texts: what happened + vehicle (+ driver)', () => {
+  assert.deepEqual(message({ type: 'overspeed', payload: { speed: 82, limit: 60 } }, 'TN 38 BX 4521', 'Arun'), {
+    title: 'Overspeed · 82 km/h', body: 'TN 38 BX 4521 is going 82 km/h (limit 60 km/h). Driver: Arun.',
   });
-  assert.equal(message({ type: 'geofence_enter', payload: { name: 'Home' } }, null).body, 'Entered Home');
+  assert.equal(message({ type: 'geofence_enter', payload: { name: 'Home' } }, null).body, 'Your vehicle entered Home.');
+  assert.deepEqual(message({ type: 'long_stop', payload: { minutes: 503 } }, 'TN 37 CK 1187', 'Divya Mohan'), {
+    title: 'Long stop · 8 h 23 min', body: 'TN 37 CK 1187 has been parked for 8 h 23 min. Driver: Divya Mohan.',
+  });
+  assert.equal(message({ type: 'gps_lost' }, 'TN 38 AZ 2210').body, 'TN 38 AZ 2210 is online but has no location.');
+});
+
+test('quiet hours are 22:00-07:00 in the vehicle timezone', () => {
+  assert.equal(inQuietHours(new Date('2026-10-22T17:00:00Z')), true); // 22:30 IST
+  assert.equal(inQuietHours(new Date('2026-10-22T01:00:00Z')), true); // 06:30 IST
+  assert.equal(inQuietHours(new Date('2026-10-22T02:00:00Z')), false); // 07:30 IST
+  assert.equal(inQuietHours(new Date('2026-10-22T17:00:00Z'), 'UTC'), false); // 17:00 UTC
 });
 
 test('push is disabled (not crashing) without a key, or with the app file by mistake', () => {

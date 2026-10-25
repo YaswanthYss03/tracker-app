@@ -39,7 +39,7 @@ const DAY = 24 * HOUR;
 const MAX_GEOFENCES = 20;
 const EVENT_TYPES = [
   'ignition_on', 'ignition_off', 'overspeed', 'geofence_enter', 'geofence_exit',
-  'sos', 'power_cut', 'vibration', 'low_battery', 'power_off', 'offline', 'online',
+  'sos', 'power_cut', 'vibration', 'low_battery', 'power_off', 'offline', 'online', 'long_stop', 'gps_lost',
 ];
 
 /** from/to with defaults and a maximum span. */

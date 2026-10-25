@@ -67,9 +67,10 @@ async function main() {
   });
   logger.info({ googleSignIn: config.google.clientIds.length > 0 }, 'google sign-in');
   const fcm = createFcm({ credentialsFile: config.firebaseCredentialsFile, logger });
+  const notifier = createNotifier({ fcm, logger });
   const processors = startProcessors({
     ingest, cache, ownership, logger,
-    notifier: createNotifier({ fcm, logger }),
+    notifier,
     offlineAfterMs: config.offlineAfterMs,
   });
 
@@ -91,7 +92,7 @@ async function main() {
   };
   const app = createApp({
     config, logger, pingDatabase, gateway, ingest, writer, cache, registry, ownership, authService, mailer,
-    processors, hooks, pushEnabled: fcm.enabled, realtimeStats: () => realtime?.connectionCount() ?? 0,
+    processors, hooks, notifier, pushEnabled: fcm.enabled, realtimeStats: () => realtime?.connectionCount() ?? 0,
   });
   const httpServer = app.listen(config.httpPort, '0.0.0.0', () =>
     logger.info({ port: config.httpPort, adminApi: Boolean(config.adminApiKey) }, 'HTTP API listening')

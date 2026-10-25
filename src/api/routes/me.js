@@ -2,7 +2,8 @@
  * /api/v1/me — the logged-in user's account.
  *
  *   GET    /                 profile
- *   PATCH  /                 { name }
+ *   PATCH  /                 { name?, phone?, company?, alerts?: { offline, longStop, gpsLost, quietHours } }
+ *   POST   /push-test        -> { sent } a test notification to my phones (503 if push is off)
  *   POST   /password         { currentPassword, newPassword } -> 204, logs out all sessions
  *   POST   /logout-all       -> 204
  *   DELETE /                 { password } (or { confirmEmail } for Google-only accounts) -> 204;
@@ -17,17 +18,37 @@ const { parse, wrap, z, schemas } = require('../validate');
 const eventsRepo = require('../../db/repositories/events');
 const { eventDto, tripDto } = require('../dto');
 const { prisma } = require('../../db/client');
+const { AppError } = require('../../lib/errors');
 
-function createMeRouter({ authService }) {
+function createMeRouter({ authService, notifier }) {
   const router = express.Router();
 
   router.get('/', wrap(async (req, res) => {
     res.json({ data: authService.publicUser(await authService.getUser(req.user.id)) });
   }));
 
+  const profileSchema = z.object({
+    name: z.string().trim().min(1).max(80).optional(),
+    phone: z.string().trim().regex(/^\+?[0-9 ()-]{6,20}$/, 'enter a valid phone number').nullable().optional(),
+    company: z.string().trim().max(80).nullable().optional(),
+    alerts: z.object({
+      offline: z.boolean().optional(),
+      longStop: z.boolean().optional(),
+      gpsLost: z.boolean().optional(),
+      quietHours: z.boolean().optional(),
+    }).strict().optional(),
+  }).strict().refine((v) => Object.keys(v).length > 0, 'nothing to update');
+
   router.patch('/', wrap(async (req, res) => {
-    const { name } = parse(z.object({ name: z.string().trim().min(1).max(80) }), req.body);
-    res.json({ data: await authService.updateProfile(req.user.id, { name }) });
+    // Empty strings from forms clear phone / company.
+    const body = { ...req.body };
+    for (const k of ['phone', 'company']) if (body[k] === '') body[k] = null;
+    res.json({ data: await authService.updateProfile(req.user.id, parse(profileSchema, body)) });
+  }));
+
+  router.post('/push-test', wrap(async (req, res) => {
+    if (!notifier?.enabled) throw new AppError(503, 'PUSH_DISABLED', 'Push notifications are not set up on the server');
+    res.json({ data: await notifier.sendTest(req.user.id) });
   }));
 
   router.post('/password', wrap(async (req, res) => {

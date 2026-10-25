@@ -92,7 +92,7 @@ function createApp(deps) {
   const auth = requireAuth(authService);
   app.use('/api', limits.api);
   app.use('/api/v1/auth', createAuthRouter({ authService, limits }));
-  app.use('/api/v1/me', auth, createMeRouter({ authService }));
+  app.use('/api/v1/me', auth, createMeRouter({ authService, notifier: deps.notifier }));
   app.use('/api/v1/inquiries', createInquiriesRouter({ authService, limits, mailer: deps.mailer, support: config.support, logger }));
   app.use('/api/v1/devices', auth, createDevicesRouter({ ownership, cache, limits }));
   app.use(
