@@ -23,11 +23,14 @@ export type MapMarker = LatLon & { id: string; heading?: number | null; online?:
 export type MapDot = LatLon & { id: string; color: string };
 export type MapCircle = LatLon & { id: string; radiusM: number; draft?: boolean };
 export type MapPolygon = { id: string; points: [number, number][] };
+/** Extra coloured lines (e.g. several vehicles' routes when comparing). */
+export type MapRoute = { id: string; color: string; points: LatLon[] };
 
 type Props = {
   markers?: MapMarker[];
   dots?: MapDot[];
   route?: LatLon[];
+  routes?: MapRoute[];
   circles?: MapCircle[];
   polygons?: MapPolygon[];
   /** Keep this point centred (eases when it moves). */
@@ -58,7 +61,7 @@ const WebView = RNWebView as unknown as ComponentType<any>;
 type WebViewHandle = { injectJavaScript: (js: string) => void };
 
 export function AppMap({
-  markers = [], dots = [], route = [], circles = [], polygons = [], follow, fitTo, fitKey,
+  markers = [], dots = [], route = [], routes = [], circles = [], polygons = [], follow, fitTo, fitKey,
   initialCenter, initialZoom, onMarkerPress, onLongPress, showLabels, selectedId, padding, ref, style,
 }: Props) {
   const c = useColors();
@@ -83,7 +86,7 @@ export function AppMap({
   );
 
   const payload = JSON.stringify({
-    markers, dots, route, circles, polygons, follow: follow || null,
+    markers, dots, route, routes, circles, polygons, follow: follow || null,
     fitTo: fitTo || null, fitKey: fitKey ?? null, longPress: Boolean(onLongPress),
     labels: Boolean(showLabels), selectedId: selectedId ?? null, padding: padding || null,
   });
@@ -249,6 +252,7 @@ function apply(s) {
   const pad = JSON.stringify(s.padding);
   if (s.padding && pad !== lastPad) lastPad = pad, map.setPadding({ top: s.padding.top || 0, bottom: s.padding.bottom || 0, left: s.padding.left || 0, right: s.padding.right || 0 });
   syncDots(s.dots || []);
+  map.getSource('routes').setData(fc((s.routes || []).filter((r) => r.points.length > 1).map((r) => ({ type: 'Feature', properties: { color: r.color }, geometry: { type: 'LineString', coordinates: r.points.map((p) => [p.lon, p.lat]) } }))));
   map.getSource('route').setData(fc((s.route || []).length > 1 ? [{ type: 'Feature', geometry: { type: 'LineString', coordinates: s.route.map((p) => [p.lon, p.lat]) } }] : []));
   const fence = (c) => ({ type: 'Feature', properties: { draft: !!c.draft }, geometry: { type: 'Polygon', coordinates: [circlePolygon(c.lat, c.lon, c.radiusM)] } });
   const polys = (s.polygons || []).map((p) => ({ type: 'Feature', properties: { draft: false }, geometry: { type: 'Polygon', coordinates: [[...p.points.map(([la, lo]) => [lo, la]), [p.points[0][1], p.points[0][0]]]] } }));
@@ -276,6 +280,8 @@ function apply(s) {
 window.update = (s) => { pending = s; if (ready) apply(s); };
 
 map.on('load', () => {
+  map.addSource('routes', { type: 'geojson', data: fc([]) });
+  map.addLayer({ id: 'routes', type: 'line', source: 'routes', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 4, 'line-opacity': 0.9 } });
   map.addSource('route', { type: 'geojson', data: fc([]) });
   map.addLayer({ id: 'route', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '${routeColor}', 'line-width': 5 } });
   map.addSource('fences', { type: 'geojson', data: fc([]) });
