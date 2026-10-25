@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { AppMap, type LatLon, type MapMarker } from './Map';
 import { AppText } from './ui';
+import { usePref } from '@/lib/prefs';
 import { radius, space, type, useColors } from '@/theme';
 
 export type Rect = { x: number; y: number; width: number; height: number };
@@ -24,6 +25,7 @@ export function MapFullscreen({
 }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
+  const platesOnMap = usePref('platesOnMap');
   const { width: W, height: H } = useWindowDimensions();
   const p = useSharedValue(0); // 0 = card, 1 = full screen
   const [mounted, setMounted] = useState(false);
@@ -74,6 +76,7 @@ export function MapFullscreen({
           initialCenter={points[0]}
           initialZoom={12}
           markers={markers}
+          showLabels={platesOnMap}
           fitTo={points}
           fitKey={`full-${fitKey}`}
           onMarkerPress={(id) => {

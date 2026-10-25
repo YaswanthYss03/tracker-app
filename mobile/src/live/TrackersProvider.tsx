@@ -5,7 +5,7 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, type ApiError } from '@/api/client';
-import { deviceName, type Device, type Live } from '@/api/types';
+import { plateOrName, type Device, type Live } from '@/api/types';
 import { useLive } from '@/live/useLive';
 import { alertText, SEVERE_ALERTS } from '@/lib/format';
 import { AlertBanner, type BannerAlert } from '@/components/AlertBanner';
@@ -34,7 +34,7 @@ export function TrackersProvider({ children }: { children: ReactNode }) {
     refetchInterval: (q) => (q.state.status === 'error' ? 15_000 : false),
   });
   const devices = useMemo(() => data?.data || [], [data]);
-  const names = useMemo(() => Object.fromEntries(devices.map((d) => [d.id, deviceName(d)])), [devices]);
+  const names = useMemo(() => Object.fromEntries(devices.map((d) => [d.id, plateOrName(d)])), [devices]);
 
   const { live } = useLive(devices.map((d) => d.id), {
     onAlert: (a) => setBanner({ title: names[a.deviceId] || 'Tracker', text: alertText(a), severe: SEVERE_ALERTS.has(a.type), deviceId: a.deviceId }),

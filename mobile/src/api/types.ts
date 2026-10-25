@@ -9,6 +9,10 @@ export type User = {
   /** false for accounts created with Google that never set a password */
   hasPassword?: boolean;
   googleLinked?: boolean;
+  phone?: string | null;
+  company?: string | null;
+  /** Which alerts are pushed to this person (always recorded) */
+  alerts?: { offline: boolean; longStop: boolean; gpsLost: boolean; quietHours: boolean };
 };
 
 export type Live = {

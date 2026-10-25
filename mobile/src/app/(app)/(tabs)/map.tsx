@@ -11,6 +11,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from '
 import { plateOrName } from '@/api/types';
 import { useTrackers } from '@/live/TrackersProvider';
 import { useAddress } from '@/lib/address';
+import { usePref } from '@/lib/prefs';
 import { timeAgo } from '@/lib/format';
 import { STATUS_LABEL, statusColor, statusGroup, type StatusGroup } from '@/lib/vehicleStatus';
 import { AppMap, type AppMapHandle, type LatLon } from '@/components/Map';
@@ -24,6 +25,7 @@ export default function MapTab() {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const { devices, stateOf, isLoading } = useTrackers();
+  const platesOnMap = usePref('platesOnMap');
   const map = useRef<AppMapHandle>(null);
   const chips = useRef<ComponentRef<typeof ScrollView>>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -88,7 +90,7 @@ export default function MapTab() {
         style={StyleSheet.absoluteFill}
         initialCenter={points[0]}
         initialZoom={13}
-        showLabels
+        showLabels={platesOnMap}
         selectedId={selectedId}
         padding={{ top: insets.top + 20, bottom: full ? 20 : sheetH + 20, left: 20, right: 70 }}
         markers={located.map((r) => ({ id: r.d.id, lat: r.s.lat!, lon: r.s.lon!, heading: r.s.heading, online: r.s.online, label: plateOrName(r.d), vehicle: r.d.icon }))}

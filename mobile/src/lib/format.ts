@@ -50,8 +50,10 @@ export const ALERT_LABELS: Record<string, string> = {
   vibration: 'Vibration',
   low_battery: 'Low battery',
   power_off: 'Tracker off',
-  offline: 'Offline',
+  offline: 'Went offline',
   online: 'Back online',
+  long_stop: 'Long stop',
+  gps_lost: 'GPS lost',
 };
 
 export const ALERT_ICONS: Record<string, string> = {
@@ -67,9 +69,19 @@ export const ALERT_ICONS: Record<string, string> = {
   power_off: 'power',
   offline: 'cloud-offline-outline',
   online: 'cloud-done-outline',
+  long_stop: 'hourglass-outline',
+  gps_lost: 'locate-outline',
 };
 
 export const SEVERE_ALERTS = new Set(['sos', 'power_cut', 'overspeed', 'power_off']);
+
+/** 503 -> "8 h 23 min" */
+export function stopLength(minutes?: number) {
+  if (!minutes || minutes < 60) return `${minutes || 0} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `${h} h ${m} min` : `${h} h`;
+}
 
 export function alertText(a: Pick<AlertEvent, 'type' | 'details'>) {
   const d = a.details || {};
@@ -77,6 +89,8 @@ export function alertText(a: Pick<AlertEvent, 'type' | 'details'>) {
     case 'overspeed': return `${d.speed} km/h (limit ${d.limit})`;
     case 'geofence_enter': return `Entered ${d.name || 'area'}`;
     case 'geofence_exit': return `Left ${d.name || 'area'}`;
+    case 'long_stop': return `Long stop · ${stopLength(d.minutes)}`;
+    case 'gps_lost': return 'GPS signal lost';
     default: return ALERT_LABELS[a.type] || a.type;
   }
 }
@@ -85,4 +99,11 @@ export function alertText(a: Pick<AlertEvent, 'type' | 'details'>) {
 export function formatActivationCode(input: string) {
   const clean = input.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
   return clean.length > 5 ? `${clean.slice(0, 5)}-${clean.slice(5)}` : clean;
+}
+
+/** "Meera Raman" -> "MR" (falls back to the email). */
+export function initials(name?: string | null, email?: string) {
+  const src = (name || email || '?').trim();
+  const parts = src.split(/[\s@._-]+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? '?') + (parts.length > 1 ? parts[1][0] : '')).toUpperCase();
 }
