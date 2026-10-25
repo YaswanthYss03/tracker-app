@@ -17,7 +17,7 @@ function list(deviceId, { from, to, types, limit = 200 }) {
 function listForUser(userId, { from, limit = 200 }) {
   return prisma.event.findMany({
     where: { time: { gte: from }, device: { access: { some: { userId } } } },
-    include: { device: { select: { name: true, imei: true } } },
+    include: { device: { select: { name: true, imei: true, registrationNumber: true } } },
     orderBy: { time: 'desc' },
     take: limit,
   });

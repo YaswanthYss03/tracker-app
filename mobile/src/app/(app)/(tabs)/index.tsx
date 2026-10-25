@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
   badge: { position: 'absolute', top: 4, right: 4, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
   badgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   mapCard: { height: 190, borderRadius: radius.lg, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
-  fullBtn: { position: 'absolute', right: 12, bottom: 12, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', ...shadow },
+  fullBtn: { position: 'absolute', right: 12, bottom: 30, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', ...shadow },
   actions: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: space.sm },
   quick: { width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', ...shadow },
   plus: { position: 'absolute', right: 10, top: 12, width: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },

@@ -109,7 +109,7 @@ function createMeRouter({ authService }) {
     );
     const rows = await eventsRepo.listForUser(req.user.id, { from: new Date(Date.now() - q.days * 86_400_000), limit: q.limit });
     res.json({
-      data: rows.map((e) => ({ ...eventDto(e), deviceName: e.device.name || `Tracker ${e.device.imei.slice(-4)}` })),
+      data: rows.map((e) => ({ ...eventDto(e), deviceName: e.device.registrationNumber || e.device.name || `Tracker ${e.device.imei.slice(-4)}` })),
       count: rows.length,
     });
   }));
