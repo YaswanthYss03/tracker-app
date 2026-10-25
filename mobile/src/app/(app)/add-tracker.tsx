@@ -25,6 +25,8 @@ export default function AddTracker() {
   const [imei, setImei] = useState('');
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
+  const [plate, setPlate] = useState('');
+  const [driver, setDriver] = useState('');
   const [vehicle, setVehicle] = useState<VehicleType>('car');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -47,7 +49,10 @@ export default function AddTracker() {
     try {
       const { data } = await api('/devices/claim', {
         method: 'POST',
-        body: { imei: imei.trim(), activationCode: code, name: name.trim() || undefined, vehicleType: vehicle },
+        body: {
+          imei: imei.trim(), activationCode: code, name: name.trim() || undefined, vehicleType: vehicle,
+          registrationNumber: plate.trim() || undefined, driverName: driver.trim() || undefined,
+        },
       });
       await queryClient.invalidateQueries({ queryKey: ['devices'] });
       router.replace(`/device/${data.id}`);
@@ -105,6 +110,8 @@ export default function AddTracker() {
         style={{ letterSpacing: 2 }}
       />
       <VehiclePicker value={vehicle} onChange={setVehicle} />
+      <Field label="Vehicle number (optional)" value={plate} onChangeText={(v) => setPlate(v.toUpperCase())} autoCapitalize="characters" autoCorrect={false} placeholder="e.g. TN 38 AB 1234" />
+      <Field label="Driver name (optional)" value={driver} onChangeText={setDriver} autoComplete="name" placeholder="e.g. Ravi" />
       <Field label="Name (optional)" value={name} onChangeText={setName} placeholder="e.g. Family car" />
       <ErrorBox error={error} />
       <Button title="Add tracker" onPress={submit} loading={busy} disabled={imei.length !== 15 || code.replace('-', '').length !== 10} />

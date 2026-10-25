@@ -77,7 +77,9 @@ model Device {
   activationCodeHash String       @map("activation_code_hash")
   status             DeviceStatus @default(inventory)
   name               String?
-  icon               String?
+  icon               String? // vehicle type: car, bike, bus, ...
+  registrationNumber String?      @map("registration_number") // vehicle number plate, e.g. TN 38 AB 1234
+  driverName         String?      @map("driver_name")
   speedLimitKmh      Int?         @map("speed_limit_kmh") @db.SmallInt
   timezone           String       @default("Asia/Kolkata")
 

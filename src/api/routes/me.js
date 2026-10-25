@@ -10,11 +10,13 @@
  *   POST   /push-tokens      { token, platform: android|ios|web } -> 204
  *   DELETE /push-tokens      { token } -> 204
  *   GET    /events           ?days=7&limit=200 alerts from all my trackers
+ *   GET    /trips            ?days=7&limit=300 trips of all my trackers, newest first
  */
 const express = require('express');
 const { parse, wrap, z, schemas } = require('../validate');
 const eventsRepo = require('../../db/repositories/events');
-const { eventDto } = require('../dto');
+const { eventDto, tripDto } = require('../dto');
+const { prisma } = require('../../db/client');
 
 function createMeRouter({ authService }) {
   const router = express.Router();
@@ -65,6 +67,36 @@ function createMeRouter({ authService }) {
     const { token } = parse(z.object({ token: z.string().min(1).max(4096) }), req.body);
     await authService.deletePushToken(req.user.id, token);
     res.status(204).end();
+  }));
+
+  router.get('/trips', wrap(async (req, res) => {
+    const q = parse(
+      z.object({
+        days: z.coerce.number().int().min(1).max(31).default(7),
+        limit: z.coerce.number().int().min(1).max(500).default(300),
+      }),
+      req.query
+    );
+    const rows = await prisma.trip.findMany({
+      where: { startTime: { gte: new Date(Date.now() - q.days * 86_400_000) }, device: { access: { some: { userId: req.user.id } } } },
+      include: { device: { select: { id: true, name: true, imei: true, registrationNumber: true, driverName: true, icon: true } } },
+      orderBy: { startTime: 'desc' },
+      take: q.limit,
+    });
+    res.json({
+      data: rows.map((t) => ({
+        ...tripDto(t),
+        deviceId: t.deviceId,
+        inProgress: !t.endTime,
+        vehicle: {
+          registrationNumber: t.device.registrationNumber,
+          name: t.device.name || `Tracker ${t.device.imei.slice(-4)}`,
+          driverName: t.device.driverName,
+          icon: t.device.icon,
+        },
+      })),
+      count: rows.length,
+    });
   }));
 
   router.get('/events', wrap(async (req, res) => {

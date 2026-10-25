@@ -32,6 +32,11 @@ export type Device = {
   id: string;
   name: string | null;
   icon: string | null;
+  /** Number plate, e.g. TN 38 AB 1234 */
+  registrationNumber?: string | null;
+  driverName?: string | null;
+  /** km driven today (trips started since local midnight, incl. in progress) */
+  todayKm?: number;
   model: string;
   imei: string;
   simNumber?: string | null;
@@ -83,3 +88,6 @@ export type Geofence = {
 export type Member = { userId: string; email: string; name: string | null; role: 'owner' | 'viewer'; since: string };
 
 export const deviceName = (d: Pick<Device, 'name' | 'imei'>) => d.name || `Tracker ${d.imei.slice(-4)}`;
+
+/** Number plate if set, else the vehicle name. */
+export const plateOrName = (d: Pick<Device, 'name' | 'imei' | 'registrationNumber'>) => d.registrationNumber || deviceName(d);

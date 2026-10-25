@@ -1,31 +1,31 @@
-// Alerts from all my trackers (last 7 days).
+// Alerts from all my vehicles (last 7 days), opened from the bell on Home.
+import { useEffect } from 'react';
 import { FlatList, RefreshControl, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
-import { api, errorText } from '@/api/client';
-import type { AlertEvent } from '@/api/types';
+import { errorText } from '@/api/client';
+import { useAlertsFeed, useMarkAlertsSeen } from '@/lib/alertsSeen';
 import { AlertRow } from '@/components/AlertRow';
-import { AppText, EmptyState, ErrorBox } from '@/components/ui';
+import { AppText, EmptyState, ErrorBox, IconButton, Row } from '@/components/ui';
 import { space, useColors } from '@/theme';
 import { SkeletonRows } from '@/components/effects';
 
-type FeedItem = AlertEvent & { deviceName: string };
-
 export default function AlertsFeed() {
   const c = useColors();
-  const { data, isLoading, error, refetch, isRefetching } = useQuery({
-    queryKey: ['my-events'],
-    queryFn: () => api<{ data: FeedItem[] }>('/me/events?limit=200'),
-  });
+  const { data, isLoading, error, refetch, isRefetching } = useAlertsFeed();
+  const markSeen = useMarkAlertsSeen();
+  useEffect(markSeen, []); // eslint-disable-line react-hooks/exhaustive-deps
   const events = data?.data || [];
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.bg }}>
-      <View style={{ padding: space.lg, paddingBottom: space.sm }}>
-        <AppText variant="h1">Alerts</AppText>
-        <AppText color="textMuted">All your trackers · last 7 days</AppText>
-      </View>
+      <Row style={{ padding: space.lg, paddingBottom: space.sm, flexWrap: 'nowrap' }} gap={space.md}>
+        <IconButton icon="arrow-back" label="Back" onPress={() => router.back()} />
+        <View style={{ flex: 1 }}>
+          <AppText variant="h1">Alerts</AppText>
+          <AppText color="textMuted">All your vehicles · last 7 days</AppText>
+        </View>
+      </Row>
       <ErrorBox error={error ? errorText(error) : null} />
       {isLoading ? (
         <SkeletonRows count={5} style={{ padding: space.lg }} />

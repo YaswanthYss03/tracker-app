@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { api, errorText } from '@/api/client';
-import { deviceName, type Device } from '@/api/types';
+import { plateOrName, type Device } from "@/api/types";
 import { useLive } from '@/live/useLive';
 import { alertText, SEVERE_ALERTS } from '@/lib/format';
 import { AlertBanner, type BannerAlert } from '@/components/AlertBanner';
@@ -70,7 +70,7 @@ export default function DeviceScreen() {
           <IconButton icon="arrow-back" label="Back" onPress={() => router.back()} />
           <VehicleBadge type={device.icon} online={state.online} size={44} />
           <View style={{ flex: 1 }}>
-            <AppText variant="h2" numberOfLines={1}>{deviceName(device)}</AppText>
+            <AppText variant="h2" numberOfLines={1}>{plateOrName(device)}</AppText>
           </View>
         </Row>
         <Row gap={6}>

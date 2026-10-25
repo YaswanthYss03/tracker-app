@@ -46,6 +46,8 @@ function customerDevice(device, access, { cache }) {
     id: device.id,
     name: device.name,
     icon: device.icon,
+    registrationNumber: device.registrationNumber ?? null,
+    driverName: device.driverName ?? null,
     model: device.model,
     imei: device.imei,
     simNumber: isOwner ? device.simNumber : undefined,

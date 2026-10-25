@@ -188,6 +188,8 @@ function createOwnershipService({ cache } = {}) {
           status: 'inventory',
           name: null,
           icon: null,
+          registrationNumber: null,
+          driverName: null,
           speedLimitKmh: null,
           lastLat: null,
           lastLon: null,

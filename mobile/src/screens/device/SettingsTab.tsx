@@ -19,6 +19,8 @@ export function SettingsTab({ device, isOwner, reload }: TabProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [name, setName] = useState(device.name || '');
+  const [plate, setPlate] = useState(device.registrationNumber || '');
+  const [driver, setDriver] = useState(device.driverName || '');
   const [limit, setLimit] = useState(device.speedLimitKmh ? String(device.speedLimitKmh) : '');
   const [timezone, setTimezone] = useState(device.timezone);
   const [vehicle, setVehicle] = useState<VehicleType | null>(vehicleOf(device.icon)?.type ?? null);
@@ -33,7 +35,10 @@ export function SettingsTab({ device, isOwner, reload }: TabProps) {
     try {
       await api(`/devices/${device.id}`, {
         method: 'PATCH',
-        body: { name: name.trim() || null, speedLimitKmh: limit ? Number(limit) : null, timezone, icon: vehicle },
+        body: {
+          name: name.trim() || null, speedLimitKmh: limit ? Number(limit) : null, timezone, icon: vehicle,
+          registrationNumber: plate.trim() || null, driverName: driver.trim() || null,
+        },
       });
       setSaved(true);
       reload();
@@ -67,6 +72,8 @@ export function SettingsTab({ device, isOwner, reload }: TabProps) {
       {isOwner && (
         <Card style={{ gap: space.md }}>
           <AppText variant="h3">Tracker</AppText>
+          <Field label="Vehicle number" value={plate} onChangeText={(v) => setPlate(v.toUpperCase())} autoCapitalize="characters" autoCorrect={false} placeholder="TN 38 AB 1234" />
+          <Field label="Driver name" value={driver} onChangeText={setDriver} placeholder="e.g. Ravi" />
           <Field label="Name" value={name} onChangeText={setName} placeholder="e.g. Family car" />
           <VehiclePicker value={vehicle} onChange={setVehicle} />
           <Field
