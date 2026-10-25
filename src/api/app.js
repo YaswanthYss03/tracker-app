@@ -23,6 +23,8 @@ const { createInquiriesRouter } = require('./routes/inquiries');
 const { createDevicesRouter } = require('./routes/devices');
 const { createAdminRouter } = require('./routes/admin');
 const { createTrackingRouter, createPublicRouter } = require('./routes/tracking');
+const { createGeocodeRouter } = require('./routes/geocode');
+const { createGeocoder } = require('../services/geocoder');
 
 const WEB_DIST = path.join(__dirname, '../../web/dist');
 const ADMIN_DIST = path.join(__dirname, '../../admin/dist');
@@ -97,6 +99,11 @@ function createApp(deps) {
     createTrackingRouter({ ownership, registry, processors: deps.processors, hooks, config, limits })
   );
   app.use('/api/v1/public', createPublicRouter({ cache }));
+  const geocoder = deps.geocoder || createGeocoder({
+    userAgent: `PavakieTracker/1.0 (${config.support?.email || 'gps tracker'})`,
+    logger,
+  });
+  app.use('/api/v1/geocode', auth, createGeocodeRouter({ geocoder }));
   // Mobile app asks this at start: below minVersion it must update.
   app.get('/api/v1/app/config', (req, res) => {
     res.json({

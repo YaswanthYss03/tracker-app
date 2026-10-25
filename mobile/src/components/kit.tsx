@@ -17,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { radius, shadow, space, type, useColors } from '@/theme';
 import type { StatusGroup } from '@/lib/vehicleStatus';
 import { statusColor } from '@/lib/vehicleStatus';
+import { VehicleArt } from './VehicleArt';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 const tap = () => Haptics.selectionAsync().catch(() => {});
@@ -113,8 +114,10 @@ export function PillButton({ title, onPress, variant = 'primary', icon, loading,
 // ---------- Chips & tabs ----------
 
 /** Pill chip (40 px). Selected = aubergine fill. Optional status dot. */
-export function Chip({ label, selected, onPress, dot, hollow, icon, mono }: {
+export function Chip({ label, selected, onPress, dot, hollow, icon, mono, outline }: {
   label: string; selected?: boolean; onPress?: () => void; dot?: string; hollow?: boolean; icon?: IconName; mono?: boolean;
+  /** For chips on a white card/sheet: grey outline instead of a shadow. */
+  outline?: boolean;
 }) {
   const c = useColors();
   const fg = selected ? c.bg : c.text;
@@ -123,7 +126,12 @@ export function Chip({ label, selected, onPress, dot, hollow, icon, mono }: {
       accessibilityRole={onPress ? 'button' : undefined}
       accessibilityState={{ selected: !!selected }}
       onPress={onPress ? () => { tap(); onPress(); } : undefined}
-      style={[styles.chip, { backgroundColor: selected ? c.text : c.surface }, !selected && shadow.card]}
+      style={[
+        styles.chip,
+        { backgroundColor: selected ? c.text : outline ? 'transparent' : c.surface },
+        outline && { borderWidth: 1, borderColor: selected ? c.text : c.border },
+        !selected && !outline && shadow.card,
+      ]}
     >
       {dot && <View style={[styles.dot, hollow ? { borderWidth: 1.5, borderColor: dot } : { backgroundColor: dot }]} />}
       {icon && <Ionicons name={icon} size={16} color={fg} />}
@@ -224,6 +232,22 @@ export function Banner({ icon, text, tone = 'dark' }: { icon: IconName; text: st
     <View accessibilityRole="alert" style={[styles.banner, { backgroundColor: dark ? c.text : c.surface2 }]}>
       <Ionicons name={icon} size={18} color={dark ? c.bg : c.text} />
       <Text style={[type.bodyStrong, { color: dark ? c.bg : c.text, flex: 1, fontSize: 14 }]}>{text}</Text>
+    </View>
+  );
+}
+
+// Soft backgrounds behind the vehicle pictures (light mode).
+const TINT: Record<string, string> = {
+  car: '#DCE6F3', bike: '#F4DEDE', scooter: '#D9EFEB', bus: '#F5EAC9', van: '#E3E7EC',
+  truck: '#F6E2CC', auto: '#E1EFD8', bicycle: '#DCEFE0', tractor: '#F4DCDC', other: '#ECE3EF',
+};
+
+/** Vehicle picture on a soft tinted tile. */
+export function VehicleTile({ type: kind, width = 76, height = 62, dimmed }: { type?: string | null; width?: number; height?: number; dimmed?: boolean }) {
+  const c = useColors();
+  return (
+    <View style={{ width, height, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: c.dark ? c.surface2 : TINT[kind ?? 'other'] ?? TINT.other }}>
+      <VehicleArt type={kind} size={Math.round(height * 0.8)} dimmed={dimmed} />
     </View>
   );
 }

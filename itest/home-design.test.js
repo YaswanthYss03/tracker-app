@@ -48,3 +48,12 @@ test('vehicle list includes km driven today; /me/trips lists trips of all vehicl
   assert.equal(trips.data[0].vehicle.registrationNumber, 'TN 37 BQ 6603');
   assert.equal((await api('GET', '/api/v1/me/trips?days=1', { token: u.accessToken })).body.count, 1);
 });
+
+test('geocode: address for a position, login required, coordinates validated', async () => {
+  const u = (await api('POST', '/api/v1/auth/register', { body: { email: 'g@x.com', password: 'correct horse battery', acceptTerms: true } })).body.data;
+  assert.equal((await api('GET', '/api/v1/geocode/reverse?lat=11&lon=77')).status, 401);
+  const res = await api('GET', '/api/v1/geocode/reverse?lat=11.0168&lon=76.9558', { token: u.accessToken });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.data.address, 'Test Road, near 11.02,76.96');
+  assert.equal((await api('GET', '/api/v1/geocode/reverse?lat=200&lon=77', { token: u.accessToken })).status, 400);
+});

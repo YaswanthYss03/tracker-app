@@ -100,6 +100,8 @@ async function startApp({ requireEmailVerification = false, adminDomain = '' } =
     logger, pingDatabase, cache, registry, ownership, authService, processors, hooks, writer, ingest, mailer,
     rateLimits: { register: 10_000, claim: 10_000, commands: 10_000, forgotPassword: 10_000, resetPassword: 10_000, google: 10_000, inquiry: 10_000 }, // tests sign up many users from one IP
     gateway: { stats: () => ({ connections: 0, devicesConnected: 0 }) },
+    // Fake address lookup (no calls to OpenStreetMap from tests).
+    geocoder: { reverse: async (lat, lon) => (lat > 0 ? `Test Road, near ${lat.toFixed(2)},${lon.toFixed(2)}` : null) },
   });
 
   const server = await new Promise((resolve) => {

@@ -9,7 +9,7 @@
  * To switch to Google Maps later (iOS release), replace this file only;
  * screens use the same props.
  */
-import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
+import { useEffect, useImperativeHandle, useMemo, useRef, useState, type ComponentType, type Ref } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
 import { brand } from '@/theme/colors';
@@ -39,8 +39,17 @@ type Props = {
   initialZoom?: number;
   onMarkerPress?: (id: string) => void;
   onLongPress?: (p: LatLon) => void;
+  /** Show each marker's label (number plate) under it. */
+  showLabels?: boolean;
+  /** Highlighted marker: glow behind it, dark label, drawn on top. */
+  selectedId?: string | null;
+  /** Map padding (px) so fit/follow keep points clear of overlays like a bottom sheet. */
+  padding?: { top?: number; bottom?: number; left?: number; right?: number };
+  ref?: Ref<AppMapHandle>;
   style?: StyleProp<ViewStyle>;
 };
+
+export type AppMapHandle = { zoomIn: () => void; zoomOut: () => void };
 
 const INDIA: LatLon = { lat: 20.6, lon: 78.9 };
 
@@ -50,13 +59,17 @@ type WebViewHandle = { injectJavaScript: (js: string) => void };
 
 export function AppMap({
   markers = [], dots = [], route = [], circles = [], polygons = [], follow, fitTo, fitKey,
-  initialCenter, initialZoom, onMarkerPress, onLongPress, style,
+  initialCenter, initialZoom, onMarkerPress, onLongPress, showLabels, selectedId, padding, ref, style,
 }: Props) {
   const c = useColors();
   const web = useRef<WebViewHandle>(null);
   const [ready, setReady] = useState(false);
   const handlers = useRef({ onMarkerPress, onLongPress });
   handlers.current = { onMarkerPress, onLongPress };
+  useImperativeHandle(ref, () => ({
+    zoomIn: () => web.current?.injectJavaScript('map.zoomIn({ duration: 250 }); true;'),
+    zoomOut: () => web.current?.injectJavaScript('map.zoomOut({ duration: 250 }); true;'),
+  }), []);
 
   // The page is built once per theme; later changes go through update().
   const html = useMemo(
@@ -72,6 +85,7 @@ export function AppMap({
   const payload = JSON.stringify({
     markers, dots, route, circles, polygons, follow: follow || null,
     fitTo: fitTo || null, fitKey: fitKey ?? null, longPress: Boolean(onLongPress),
+    labels: Boolean(showLabels), selectedId: selectedId ?? null, padding: padding || null,
   });
 
   useEffect(() => {
@@ -115,6 +129,7 @@ function buildHtml({ dark, center, zoom, routeColor }: { dark: boolean; center: 
   return `<!doctype html><html><head>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@500&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <style>
   html,body,#map{margin:0;height:100%;width:100%;background:${dark ? '#1C0A1A' : '#DDE3E8'}}
@@ -134,13 +149,21 @@ function buildHtml({ dark, center, zoom, routeColor }: { dark: boolean; center: 
   .veh .ptr{position:absolute;inset:-13px;transition:transform .4s;pointer-events:none}
   .veh .ptr:before{content:'';position:absolute;top:0;left:50%;margin-left:-6px;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:9px solid ${brand.marigold};filter:drop-shadow(0 0 1px rgba(0,0,0,.6))}
   .veh.off .ptr:before{border-bottom-color:#7A7F89}
+  /* number plate under a marker; dark when selected */
+  .lbl{position:absolute;left:50%;top:100%;transform:translate(-50%,2px);white-space:nowrap;font:500 11px/1 'DM Mono',monospace;letter-spacing:.5px;color:${brand.aubergine};background:#fff;padding:4px 7px;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.25);pointer-events:none;display:none}
+  .labels .lbl{display:block}
+  .sel .lbl{display:block;background:${brand.aubergine};color:#fff}
+  /* soft marigold glow behind the selected vehicle */
+  .glow{position:absolute;left:50%;top:50%;width:96px;height:96px;margin:-48px 0 0 -48px;border-radius:50%;background:radial-gradient(circle,rgba(234,170,0,.55) 0%,rgba(234,170,0,.25) 45%,rgba(234,170,0,0) 70%);pointer-events:none;display:none;animation:pulse 1.8s ease-in-out infinite}
+  .sel .glow{display:block}
+  @keyframes pulse{0%,100%{transform:scale(.85);opacity:.9}50%{transform:scale(1.1);opacity:.6}}
   .dot{width:14px;height:14px;border-radius:50%;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
   .maplibregl-ctrl-attrib{font-size:10px}
 </style></head><body><div id="map"></div><script>
 const post = (m) => window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(m));
 const map = new maplibregl.Map({ container: 'map', style: '${style}', center: [${center.lon}, ${center.lat}], zoom: ${zoom}, attributionControl: { compact: true }, pitchWithRotate: false });
 map.touchPitch.disable();
-let ready = false, pending = null, lastFit = null, lastFollow = null, longPressOn = false;
+let ready = false, pending = null, lastFit = null, lastFollow = null, lastPad = null, longPressOn = false;
 const markerObjs = new Map(), dotObjs = new Map();
 
 function circlePolygon(lat, lon, r) {
@@ -171,12 +194,18 @@ function vehicleEl(m) {
     el.className = 'veh' + (m.online === false ? ' off' : '');
     el.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 2l7 19-7-4-7 4z" fill="' + color + '"/></svg>';
   }
+  el.style.position = 'relative';
+  el.insertAdjacentHTML('afterbegin', '<div class="glow"></div>');
+  const lbl = document.createElement('div');
+  lbl.className = 'lbl';
+  el.appendChild(lbl);
   el.addEventListener('click', (e) => { e.stopPropagation(); post({ type: 'marker', id: m.id }); });
   return el;
 }
 
-function syncMarkers(list) {
+function syncMarkers(list, s) {
   const seen = new Set();
+  document.getElementById('map').classList.toggle('labels', !!s.labels);
   for (const m of list) {
     seen.add(m.id);
     let obj = markerObjs.get(m.id);
@@ -188,6 +217,10 @@ function syncMarkers(list) {
       markerObjs.set(m.id, obj);
     }
     obj.marker.setLngLat([m.lon, m.lat]);
+    const sel = m.id === s.selectedId;
+    obj.el.classList.toggle('sel', sel);
+    obj.el.style.zIndex = sel ? '5' : '1';
+    obj.el.querySelector('.lbl').textContent = m.label || '';
     (obj.el.querySelector('.ptr') || obj.el.querySelector('img') || obj.el.querySelector('svg')).style.transform = 'rotate(' + (m.heading || 0) + 'deg)';
   }
   for (const [id, obj] of markerObjs) if (!seen.has(id)) { obj.marker.remove(); markerObjs.delete(id); }
@@ -211,7 +244,9 @@ function syncDots(list) {
 }
 
 function apply(s) {
-  syncMarkers(s.markers || []);
+  syncMarkers(s.markers || [], s);
+  const pad = JSON.stringify(s.padding);
+  if (s.padding && pad !== lastPad) lastPad = pad, map.setPadding({ top: s.padding.top || 0, bottom: s.padding.bottom || 0, left: s.padding.left || 0, right: s.padding.right || 0 });
   syncDots(s.dots || []);
   map.getSource('route').setData(fc((s.route || []).length > 1 ? [{ type: 'Feature', geometry: { type: 'LineString', coordinates: s.route.map((p) => [p.lon, p.lat]) } }] : []));
   const fence = (c) => ({ type: 'Feature', properties: { draft: !!c.draft }, geometry: { type: 'Polygon', coordinates: [circlePolygon(c.lat, c.lon, c.radiusM)] } });

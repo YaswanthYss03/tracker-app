@@ -15,9 +15,9 @@ import { STATUS_LABEL, statusColor, statusGroup, type StatusGroup } from '@/lib/
 import { AppMap } from '@/components/Map';
 import { MapFullscreen, type Rect } from '@/components/MapFullscreen';
 import { VehicleArt } from '@/components/VehicleArt';
-import { AppText, Button, EmptyState, ErrorBox } from '@/components/ui';
+import { AppText, ErrorBox } from '@/components/ui';
 import { SkeletonRows } from '@/components/effects';
-import { Plate } from '@/components/kit';
+import { Banner, PillButton, Plate, VehicleTile } from '@/components/kit';
 import { radius, space, type, useColors } from '@/theme';
 
 type Filter = 'all' | StatusGroup;
@@ -25,15 +25,9 @@ type Sort = 'status' | 'plate' | 'speed' | 'km';
 const SORTS: [Sort, string][] = [['status', 'Status'], ['plate', 'Number plate'], ['speed', 'Speed'], ['km', 'Km today']];
 const ORDER: Record<StatusGroup, number> = { moving: 0, idle: 1, stopped: 2, offline: 3 };
 
-// Soft backgrounds behind the vehicle pictures (light mode).
-const TINT: Record<string, string> = {
-  car: '#DCE6F3', bike: '#F4DEDE', scooter: '#D9EFEB', bus: '#F5EAC9', van: '#E3E7EC',
-  truck: '#F6E2CC', auto: '#E1EFD8', bicycle: '#DCEFE0', tractor: '#F4DCDC', other: '#ECE3EF',
-};
-
 export default function Home() {
   const c = useColors();
-  const { devices, stateOf, isLoading, isRefetching, error, refetch } = useTrackers();
+  const { devices, stateOf, isLoading, isRefetching, error, refetch, offline, updatedAt } = useTrackers();
   const unread = useUnreadAlerts();
   const [filter, setFilter] = useState<Filter>('all');
   const [sort, setSort] = useState<Sort>('status');
@@ -72,9 +66,18 @@ export default function Home() {
     });
   }
 
+  const quickActions = (
+    <View style={styles.actions}>
+      <Quick icon="time-outline" label="Trips" onPress={() => router.push('/trips')} />
+      <Quick icon="car-sport-outline" plus label="Add vehicle" onPress={() => router.push('/add-tracker')} />
+      <Quick icon="people-outline" label="Share with family" onPress={() => (devices.length === 1 ? router.push(`/device/${devices[0].id}?tab=sharing`) : setShareOpen(true))} />
+      <Quick icon="construct-outline" label="Service & support" onPress={() => router.push('/contact')} />
+    </View>
+  );
+
   const header = (
     <View style={{ gap: space.lg }}>
-      <ErrorBox error={error ? errorText(error) : null} />
+      {!offline && <ErrorBox error={error ? errorText(error) : null} />}
 
       {/* Map of all vehicles */}
       <View ref={mapCard} collapsable={false} style={[styles.mapCard, { backgroundColor: c.surface, borderColor: c.border }]}>
@@ -91,13 +94,9 @@ export default function Home() {
         </Pressable>
       </View>
 
-      {/* Quick actions */}
-      <View style={styles.actions}>
-        <Quick icon="time-outline" label="Trips" onPress={() => router.push('/trips')} />
-        <Quick icon="car-sport-outline" plus label="Add vehicle" onPress={() => router.push('/add-tracker')} />
-        <Quick icon="people-outline" label="Share with family" onPress={() => (devices.length === 1 ? router.push(`/device/${devices[0].id}?tab=sharing`) : setShareOpen(true))} />
-        <Quick icon="construct-outline" label="Service & support" onPress={() => router.push('/contact')} />
-      </View>
+      {quickActions}
+
+      {offline && <Banner icon="cloud-offline-outline" text={`Offline · saved ${timeAgo(new Date(updatedAt).toISOString())}`} />}
 
       {/* Status filters + search + sort */}
       <View style={[styles.filterBar, { borderBottomColor: c.border }]}>
@@ -152,14 +151,29 @@ export default function Home() {
       </View>
 
       {isLoading ? (
-        <SkeletonRows count={4} style={{ padding: space.lg }} />
+        <View style={styles.state}>
+          {quickActions}
+          <SkeletonRows count={3} />
+        </View>
+      ) : devices.length === 0 && error ? (
+        <View style={styles.state}>
+          {quickActions}
+          <View style={styles.stateBody}>
+            <Ionicons name={offline ? 'cloud-offline-outline' : 'alert-circle-outline'} size={40} color={c.textMuted} />
+            <AppText variant="h3" center>{offline ? 'No internet connection' : "Couldn't load vehicles"}</AppText>
+            {!offline && <AppText color="textMuted" center>{errorText(error)}</AppText>}
+            <PillButton title="Try again" icon="refresh" onPress={refetch} loading={isRefetching} style={{ alignSelf: 'center', minWidth: 180 }} />
+          </View>
+        </View>
       ) : devices.length === 0 ? (
-        <EmptyState
-          icon="car-sport-outline"
-          title="No vehicles yet"
-          text="Add your tracker with the IMEI and activation code printed on the box."
-          action={<Button title="Add vehicle" icon="add" onPress={() => router.push('/add-tracker')} />}
-        />
+        <View style={styles.state}>
+          {quickActions}
+          <View style={styles.stateBody}>
+            <AppText variant="h3" center>Add your first vehicle</AppText>
+            <AppText color="textMuted" center>Use the IMEI and activation code printed on the tracker box.</AppText>
+            <PillButton title="Add vehicle" icon="add" onPress={() => router.push('/add-tracker')} style={{ alignSelf: 'stretch' }} />
+          </View>
+        </View>
       ) : (
         <FlatList
           data={visible}
@@ -248,9 +262,7 @@ function VehicleCard({ device, state, group }: { device: Device; state: Live; gr
       accessibilityLabel={`${plateOrName(device)}, driver ${driver}, ${offline ? 'offline' : `${state.speed ?? 0} kilometres per hour`}`}
       style={({ pressed }) => [styles.card, { backgroundColor: pressed ? c.surface : c.surface, borderColor: pressed ? c.accent : c.border }]}
     >
-      <View style={[styles.art, { backgroundColor: c.dark ? c.surface2 : TINT[device.icon ?? 'other'] ?? TINT.other }]}>
-        <VehicleArt type={device.icon} size={50} dimmed={offline} />
-      </View>
+      <VehicleTile type={device.icon} width={72} height={60} dimmed={offline} />
       <View style={{ flex: 1, gap: 6, minWidth: 0 }}>
         <Plate value={device.registrationNumber || deviceName(device)} />
         <View style={styles.driverRow}>
@@ -301,10 +313,11 @@ const styles = StyleSheet.create({
   dot: { width: 9, height: 9, borderRadius: 5 },
   search: { flexDirection: 'row', alignItems: 'center', gap: space.sm, height: 46, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: space.md },
   card: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.lg, borderWidth: 1, ...shadow },
-  art: { width: 72, height: 60, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   driverRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   avatar: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   backdrop: { flex: 1, justifyContent: 'flex-end' },
   sheet: { padding: space.lg, gap: space.sm, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingBottom: space.xxl },
   sheetRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 48 },
+  state: { padding: space.lg, paddingTop: space.sm, gap: space.xl },
+  stateBody: { alignItems: 'center', gap: space.md, paddingTop: space.xxl, paddingHorizontal: space.md },
 });
