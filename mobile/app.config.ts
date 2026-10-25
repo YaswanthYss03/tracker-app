@@ -13,13 +13,13 @@ const config: ExpoConfig = {
   name: 'Pavakie Tracker',
   slug: 'pavakie-tracker',
   scheme: 'pavakie',
-  version: '1.1.1',
+  version: '1.2.0',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
   userInterfaceStyle: 'automatic',
   android: {
     package: 'com.pavakie.tracker',
-    versionCode: 3,
+    versionCode: 4,
     googleServicesFile: './google-services.json',
     adaptiveIcon: {
       backgroundColor: '#3A0F34',
