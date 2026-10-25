@@ -25,6 +25,7 @@ const { createAdminRouter } = require('./routes/admin');
 const { createTrackingRouter, createPublicRouter } = require('./routes/tracking');
 const { createGeocodeRouter } = require('./routes/geocode');
 const { createDriversRouter } = require('./routes/drivers');
+const { createServiceRouter } = require('./routes/service');
 const { createGeocoder } = require('../services/geocoder');
 
 const WEB_DIST = path.join(__dirname, '../../web/dist');
@@ -99,6 +100,7 @@ function createApp(deps) {
     auth,
     createTrackingRouter({ ownership, registry, processors: deps.processors, hooks, config, limits })
   );
+  app.use('/api/v1/devices', auth, createServiceRouter({ ownership }));
   app.use('/api/v1/public', createPublicRouter({ cache }));
   const geocoder = deps.geocoder || createGeocoder({
     userAgent: `PavakieTracker/1.0 (${config.support?.email || 'gps tracker'})`,

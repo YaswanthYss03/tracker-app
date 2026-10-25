@@ -32,6 +32,7 @@ async function wipeHistory(tx, deviceId) {
   await tx.event.deleteMany({ where: { deviceId } });
   await tx.geofence.deleteMany({ where: { deviceId } });
   await tx.shareLink.deleteMany({ where: { deviceId } });
+  await tx.serviceRecord.deleteMany({ where: { deviceId } });
 }
 
 /**

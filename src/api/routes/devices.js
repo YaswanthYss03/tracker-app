@@ -1,7 +1,7 @@
 /**
  * /api/v1/devices — a customer's trackers.
  *
- *   GET    /                              trackers I own or can view (with live state, todayKm)
+ *   GET    /                              trackers I own or can view (with live state, todayKm, serviceDue)
  *   POST   /claim                         { imei, activationCode, name?, vehicleType? } -> 201 (200 if already mine)
  *   GET    /:deviceId                     one tracker                         (owner, viewer)
  *   GET    /:deviceId/live                live state only (light, for polling) (owner, viewer)
@@ -23,6 +23,7 @@ const { badRequest } = require('../../lib/errors');
 const { prisma } = require('../../db/client');
 const { localMidnight } = require('../../lib/time');
 const driversRepo = require('../../db/repositories/drivers');
+const { serviceDueDates } = require('./service');
 
 // Vehicle type is stored in devices.icon; apps show a matching map icon.
 const VEHICLE_TYPES = ['car', 'bike', 'scooter', 'bus', 'van', 'truck', 'auto', 'bicycle', 'tractor', 'other'];
@@ -113,7 +114,11 @@ function createDevicesRouter({ ownership, cache, limits }) {
     const rows = await ownership.listForUser(req.user.id);
     await driversRepo.attachToDevices(rows.map((a) => a.device));
     const todayKm = await distanceToday(rows.map((a) => a.device));
-    res.json({ data: rows.map((a) => ({ ...dto(a.device, a), todayKm: todayKm.get(a.device.id) ?? 0 })), count: rows.length });
+    const serviceDue = await serviceDueDates(rows.map((a) => a.device.id));
+    res.json({
+      data: rows.map((a) => ({ ...dto(a.device, a), todayKm: todayKm.get(a.device.id) ?? 0, serviceDue: serviceDue.get(a.device.id) ?? null })),
+      count: rows.length,
+    });
   }));
 
   router.post('/claim', limits.claim, wrap(async (req, res) => {
