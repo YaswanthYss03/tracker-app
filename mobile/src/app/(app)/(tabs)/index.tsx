@@ -17,7 +17,8 @@ import { MapFullscreen, type Rect } from '@/components/MapFullscreen';
 import { VehicleArt } from '@/components/VehicleArt';
 import { AppText, ErrorBox } from '@/components/ui';
 import { SkeletonRows } from '@/components/effects';
-import { Banner, PillButton, Plate, VehicleTile } from '@/components/kit';
+import { Banner, PillButton, Plate, Sheet, VehicleTile } from '@/components/kit';
+import { DUE_SOON_DAYS, daysUntil, dueText } from '@/lib/service';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import { radius, space, type, useColors } from '@/theme';
 
@@ -36,11 +37,18 @@ export default function Home() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [shareOpen, setShareOpen] = useState(false);
+  const [serviceOpen, setServiceOpen] = useState(false);
   const [full, setFull] = useState(false);
   const [cardRect, setCardRect] = useState<Rect | null>(null);
   const mapCard = useRef<ComponentRef<typeof View>>(null);
 
   const rows = devices.map((d) => ({ d, s: stateOf(d), g: statusGroup(stateOf(d)) }));
+  // Vehicles with a service date set, soonest first; "due soon" = within 15 days or overdue.
+  const serviceList = devices
+    .filter((d) => d.serviceDue)
+    .map((d) => ({ d, days: daysUntil(d.serviceDue!) }))
+    .sort((a, b) => a.days - b.days);
+  const dueSoon = serviceList.filter((x) => x.days <= DUE_SOON_DAYS);
   const counts = { moving: 0, stopped: 0, idle: 0, offline: 0 } as Record<StatusGroup, number>;
   rows.forEach((r) => (counts[r.g] += 1));
 
@@ -72,7 +80,7 @@ export default function Home() {
       <Quick icon="time-outline" label="Trips" onPress={() => router.push('/trips')} />
       <Quick icon="car-sport-outline" plus label="Add vehicle" onPress={() => router.push('/add-tracker')} />
       <Quick icon="people-outline" label="Share with family" onPress={() => (devices.length === 1 ? router.push(`/device/${devices[0].id}?tab=sharing`) : setShareOpen(true))} />
-      <Quick icon="construct-outline" label="Service & support" onPress={() => router.push('/contact')} />
+      <Quick icon="construct-outline" label="Service & support" badge={dueSoon.length || undefined} onPress={() => setServiceOpen(true)} />
     </View>
   );
 
@@ -205,6 +213,25 @@ export default function Home() {
         </Pressable>
       </Modal>
 
+      {/* Service: vehicles due, and support */}
+      <Sheet visible={serviceOpen} onClose={() => setServiceOpen(false)} title="Service & support">
+        {serviceList.length === 0 ? (
+          <AppText color="textMuted">No service dates yet. Add a service record on a vehicle's Service tab to get reminders.</AppText>
+        ) : (
+          serviceList.slice(0, 8).map(({ d, days }) => (
+            <Pressable key={d.id} onPress={() => { setServiceOpen(false); router.push(`/device/${d.id}?section=service`); }} style={styles.sheetRow} accessibilityRole="button">
+              <VehicleTile type={d.icon} color={d.color} width={52} height={40} />
+              <View style={{ flex: 1 }}>
+                <Plate value={plateOrName(d)} size={15} />
+                <AppText variant="small" color={days < 0 ? 'danger' : 'textMuted'}>{dueText(days)}</AppText>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={c.textMuted} />
+            </Pressable>
+          ))
+        )}
+        <PillButton title="Contact support" icon="chatbubbles-outline" variant="secondary" onPress={() => { setServiceOpen(false); router.push('/contact'); }} />
+      </Sheet>
+
       {/* Choose a vehicle to share */}
       <Modal visible={shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>
         <Pressable style={[styles.backdrop, { backgroundColor: c.overlay }]} onPress={() => setShareOpen(false)}>
@@ -223,11 +250,16 @@ export default function Home() {
   );
 }
 
-function Quick({ icon, label, onPress, plus }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void; plus?: boolean }) {
+function Quick({ icon, label, onPress, plus, badge }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void; plus?: boolean; badge?: number }) {
   const c = useColors();
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={({ pressed }) => [styles.quick, { backgroundColor: c.surface, opacity: pressed ? 0.8 : 1 }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={badge ? `${label}, ${badge} due` : label} onPress={onPress} style={({ pressed }) => [styles.quick, { backgroundColor: c.surface, opacity: pressed ? 0.8 : 1 }]}>
       <Ionicons name={icon} size={24} color={c.text} />
+      {badge ? (
+        <View style={[styles.qBadge, { backgroundColor: c.accent, borderColor: c.bg }]}>
+          <Text style={{ fontSize: 10, fontWeight: '700', color: c.onAccent }}>{badge}</Text>
+        </View>
+      ) : null}
       {plus && (
         <View style={[styles.plus, { backgroundColor: c.accent }]}>
           <Ionicons name="add" size={11} color={c.onAccent} />
@@ -309,6 +341,7 @@ const styles = StyleSheet.create({
   fullBtn: { position: 'absolute', right: 12, bottom: 30, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', ...shadow },
   actions: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: space.sm },
   quick: { width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', ...shadow },
+  qBadge: { position: 'absolute', top: -2, right: -2, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
   plus: { position: 'absolute', right: 10, top: 12, width: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
   filterBar: { flexDirection: 'row', alignItems: 'flex-end', borderBottomWidth: StyleSheet.hairlineWidth },
   filters: { flex: 1, flexDirection: 'row', gap: space.md },

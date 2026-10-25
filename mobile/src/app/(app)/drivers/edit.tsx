@@ -1,7 +1,7 @@
 // Add / edit a driver: photo (camera, files or an illustration), name, phone,
 // licence + expiry, and the vehicles they mainly drive.
 import { useEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, useNavigation, usePreventRemove } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -142,7 +142,7 @@ export default function DriverEditor() {
   return (
     <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: c.bg }}>
       <TopBar title={existing ? 'Edit driver' : 'Add driver'} close onBack={() => router.back()} />
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.lg, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
           {/* Photo */}
           <Pressable onPress={() => setSheet('photo')} accessibilityRole="button" accessibilityLabel="Change photo" style={{ alignSelf: 'center', alignItems: 'center', gap: space.sm }}>

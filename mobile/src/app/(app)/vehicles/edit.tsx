@@ -2,7 +2,7 @@
 // number plate, name, and (when adding) the tracker IMEI + activation code.
 // Editing also offers "Remove vehicle" (type the plate to confirm).
 import { useEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, useNavigation, usePreventRemove } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -160,7 +160,7 @@ export default function VehicleEditor() {
   return (
     <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: c.bg }}>
       <TopBar title={editing ? 'Edit vehicle' : 'Add vehicle'} close onBack={() => router.back()} />
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <ScrollView contentContainerStyle={{ padding: space.lg, paddingTop: space.xs, gap: space.lg, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
           {scanning ? (
             <View style={[styles.camera, { borderColor: c.accent }]}>

@@ -23,8 +23,18 @@ const PASSWORD = 'dev-password-123';
 const VEHICLES = [
   { imei: '359710049099001', registrationNumber: 'TN 66 AF 9032', driver: 'Priya Sundar', backup: 'Karthik Raja', name: 'Sales car', vehicleType: 'car', color: 'red' },
   { imei: '359710049099002', registrationNumber: 'TN 37 BQ 6603', driver: 'Ravi Thangam', name: 'School bus', vehicleType: 'bus', color: 'yellow' },
-  { imei: '359710049099003', registrationNumber: 'TN 38 BX 4521', driver: 'Arun Kumar', backup: 'Karthik Raja', name: 'Delivery truck', vehicleType: 'truck', color: 'orange' },
-  { imei: '359710049099004', registrationNumber: 'TN 37 CK 1187', driver: 'Divya Mohan', name: 'Staff van', vehicleType: 'van', color: 'blue' },
+  {
+    imei: '359710049099003', registrationNumber: 'TN 38 BX 4521', driver: 'Arun Kumar', backup: 'Karthik Raja', name: 'Delivery truck', vehicleType: 'truck', color: 'orange',
+    // date / nextDueDate in days from today
+    service: [
+      { type: 'tyres', date: -200, odometerKm: 84210, garage: 'Sri Tyres, Peelamedu', cost: 18400 },
+      { type: 'general', date: -170, odometerKm: 91330, garage: 'KG Auto Care, Gandhipuram', cost: 6850, nextDueDate: 9 },
+    ],
+  },
+  {
+    imei: '359710049099004', registrationNumber: 'TN 37 CK 1187', driver: 'Divya Mohan', name: 'Staff van', vehicleType: 'van', color: 'blue',
+    service: [{ type: 'oil', date: -60, odometerKm: 40120, garage: 'Speed Motors', cost: 2400, nextDueDate: 120 }],
+  },
   { imei: '359710049099005', registrationNumber: 'TN 99 D 7745', driver: 'Senthil Pandi', name: 'Courier bike', vehicleType: 'bike', color: 'black' },
 ];
 // Sample drivers (fake numbers in the 90000 range).
@@ -36,6 +46,8 @@ const DRIVERS = [
   { name: 'Senthil Pandi', phone: '+91 90000 00105', licenceNo: 'TN99 2011 0009931', licenceExpiry: '2026-11-12', avatar: 'a5' },
   { name: 'Karthik Raja', phone: '+91 90000 00106', licenceNo: 'TN38 2016 0005678', licenceExpiry: '2027-02-28', avatar: 'a3' },
 ];
+
+const daysFromNow = (n) => new Date(Date.now() + n * 86_400_000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
 async function call(method, path, { body, token, key } = {}) {
   const res = await fetch(BASE + '/api/v1' + path, {
@@ -81,6 +93,10 @@ async function call(method, path, { body, token, key } = {}) {
           mainDriverId: driverId[v.driver] ?? null, backupDriverId: v.backup ? driverId[v.backup] ?? null : null,
         },
       });
+    }
+    // Sample service history (only when the vehicle has none yet).
+    if (id && v.service && !(await call('GET', `/devices/${id}/service`, { token })).body?.data?.length) {
+      for (const r of v.service) await call('POST', `/devices/${id}/service`, { token, body: { ...r, date: daysFromNow(r.date), nextDueDate: r.nextDueDate != null ? daysFromNow(r.nextDueDate) : undefined } });
     }
     console.log(v.imei, claim.status === 201 ? 'added' : claim.status === 200 ? 'already yours (details updated)' : JSON.stringify(claim.body));
   }

@@ -11,6 +11,7 @@ export default function AppLayout() {
       <Stack.Screen name="add-tracker" options={{ animation: 'slide_from_bottom' }} />
       <Stack.Screen name="vehicles/edit" options={{ animation: 'slide_from_bottom' }} />
       <Stack.Screen name="drivers/edit" options={{ animation: 'slide_from_bottom' }} />
+      <Stack.Screen name="service/edit" options={{ animation: 'slide_from_bottom' }} />
       <Stack.Screen name="device/[id]" />
       <Stack.Screen name="change-password" />
     </Stack>

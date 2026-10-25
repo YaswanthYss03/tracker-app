@@ -5,13 +5,14 @@
 import { useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { api } from '@/api/client';
 import { plateOrName, type Driver } from '@/api/types';
 import { useDrivers } from '@/lib/drivers';
+import { dueText, longDate, rupees, serviceType, useService } from '@/lib/service';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import { useAddress } from '@/lib/address';
 import { timeAgo, timeOnly } from '@/lib/format';
@@ -32,7 +33,8 @@ const SIGNAL = ['No signal', 'Weak', 'Fair', 'Good', 'Excellent'];
 
 export function Overview({ device, state, isOwner }: TabProps) {
   const c = useColors();
-  const [section, setSection] = useState<Section>('driver');
+  const params = useLocalSearchParams<{ section?: Section }>();
+  const [section, setSection] = useState<Section>(params.section ?? 'driver');
   const [big, setBig] = useState(false);
   const g = statusGroup(state);
   const hasPos = state.lat != null && state.lon != null;
@@ -115,15 +117,7 @@ export function Overview({ device, state, isOwner }: TabProps) {
 
         {section === 'driver' && <DriverSection device={device} canEdit={isOwner} />}
 
-        {section === 'service' && (
-          <Card style={{ alignItems: 'center', gap: space.sm, paddingVertical: space.xl }}>
-            <View style={[styles.tileIcon, { backgroundColor: accentTint, width: 48, height: 48, borderRadius: 24 }]}>
-              <Ionicons name="construct-outline" size={22} color={c.text} />
-            </View>
-            <Text style={[type.name, { color: c.text }]}>No service records yet</Text>
-            <Text style={[type.small, { color: c.textMuted, textAlign: 'center' }]}>Service history and reminders for this vehicle will show here.</Text>
-          </Card>
-        )}
+        {section === 'service' && <ServiceSection deviceId={device.id} canEdit={isOwner} />}
 
         {section === 'tracker' && (
           <View style={styles.grid}>
@@ -264,6 +258,90 @@ function DriverCard({ role, driver, canEdit, onAdd, onChange }: {
   );
 }
 
+function ServiceSection({ deviceId, canEdit }: { deviceId: string; canEdit: boolean }) {
+  const c = useColors();
+  const { data, isLoading } = useService(deviceId);
+  const records = data?.data ?? [];
+  const next = data?.next ?? null;
+  const add = () => router.push(`/service/edit?deviceId=${deviceId}`);
+  const open = (id: string) => canEdit && router.push(`/service/edit?deviceId=${deviceId}&id=${id}`);
+
+  if (isLoading) return <Card><Text style={[type.small, { color: c.textMuted }]}>Loading…</Text></Card>;
+  if (!records.length) {
+    return (
+      <Card style={{ alignItems: 'center', gap: space.sm, paddingVertical: space.xl }}>
+        <View style={[styles.tileIcon, { backgroundColor: accentTint, width: 48, height: 48, borderRadius: 24 }]}>
+          <Ionicons name="construct-outline" size={22} color={c.text} />
+        </View>
+        <Text style={[type.name, { color: c.text }]}>No service records yet</Text>
+        <Text style={[type.small, { color: c.textMuted, textAlign: 'center' }]}>Keep the service history here and get a reminder before the next one.</Text>
+        {canEdit && <PillButton title="Add service record" icon="add" variant="dark" onPress={add} style={{ alignSelf: 'stretch', marginTop: space.sm }} />}
+      </Card>
+    );
+  }
+
+  const [latest, ...older] = records;
+  const t = serviceType(latest.type);
+  const late = next && next.daysLeft < 0;
+  return (
+    <View style={{ gap: space.md }}>
+      <Card onPress={canEdit ? () => open(latest.id) : undefined} style={{ gap: space.md }}>
+        <View style={styles.row6}>
+          <View style={[styles.tileIcon, { backgroundColor: accentTint, width: 44, height: 44, borderRadius: 22 }]}>
+            <Ionicons name={t.icon} size={20} color={c.text} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0, marginLeft: 6 }}>
+            <Text style={[type.name, { color: c.text }]}>{t.label}</Text>
+            <Text numberOfLines={1} style={[type.small, { color: c.textMuted }]}>{[longDate(latest.date), latest.garage].filter(Boolean).join(' · ')}</Text>
+          </View>
+        </View>
+        {(latest.odometerKm != null || latest.cost != null) && (
+          <View style={{ flexDirection: 'row' }}>
+            {latest.odometerKm != null && <Stat value={latest.odometerKm.toLocaleString('en-IN')} unit="km" label="Odometer" />}
+            {latest.cost != null && <Stat value={rupees(latest.cost)} label="Cost" />}
+          </View>
+        )}
+        {next && (
+          <View style={{ gap: 6 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={[type.small, { color: c.textMuted }]}>Next service · {longDate(next.date)}</Text>
+              <Text style={[type.small, { color: late ? c.danger : c.text, fontFamily: type.fieldLabel.fontFamily }]}>{dueText(next.daysLeft)}</Text>
+            </View>
+            <View style={[styles.bar, { backgroundColor: c.surface2 }]}>
+              <View style={[styles.barFill, { width: `${Math.round(next.progress * 100)}%`, backgroundColor: late ? c.danger : c.accent }]} />
+            </View>
+          </View>
+        )}
+      </Card>
+
+      {older.length > 0 && (
+        <Card padded={false}>
+          {older.map((r, i) => {
+            const ot = serviceType(r.type);
+            return (
+              <Pressable
+                key={r.id}
+                disabled={!canEdit}
+                onPress={() => open(r.id)}
+                style={[styles.moreRow, i < older.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border }]}
+              >
+                <Ionicons name={ot.icon} size={18} color={c.text} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[type.bodyStrong, { color: c.text }]}>{ot.label}</Text>
+                  <Text numberOfLines={1} style={[type.caption, { color: c.textMuted, letterSpacing: 0 }]}>{[longDate(r.date), r.garage].filter(Boolean).join(' · ')}</Text>
+                </View>
+                {r.cost != null && <Text style={[type.bodyStrong, { color: c.text }]}>{rupees(r.cost)}</Text>}
+              </Pressable>
+            );
+          })}
+        </Card>
+      )}
+
+      {canEdit && <PillButton title="Add service record" icon="add" variant="dark" onPress={add} />}
+    </View>
+  );
+}
+
 function Tile({ icon, value, label }: { icon: IconName; value: string; label: string }) {
   const c = useColors();
   return (
@@ -308,5 +386,7 @@ const styles = StyleSheet.create({
   avatar: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
   swapWrap: { position: 'absolute', left: 0, right: 0, top: '50%', marginTop: -20, alignItems: 'center', zIndex: 2 },
   pickRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 56 },
+  bar: { height: 8, borderRadius: 4, overflow: 'hidden' },
+  barFill: { height: 8, borderRadius: 4 },
   moreRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, minHeight: 52 },
 });

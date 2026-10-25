@@ -42,6 +42,8 @@ export type Device = {
   color?: string | null;
   /** km driven today (trips started since local midnight, incl. in progress) */
   todayKm?: number;
+  /** Next service date YYYY-MM-DD (vehicle list only) */
+  serviceDue?: string | null;
   model: string;
   imei: string;
   simNumber?: string | null;
@@ -68,6 +70,20 @@ export type Driver = {
 
 export type DriverVehicle = { id: string; name: string | null; registrationNumber: string | null; icon: string | null };
 export type DriverFull = Driver & { mainOf: DriverVehicle[]; backupOf: DriverVehicle[] };
+
+export type ServiceRecord = {
+  id: string;
+  type: 'general' | 'oil' | 'tyres' | 'brakes' | 'battery' | 'other';
+  /** YYYY-MM-DD */
+  date: string;
+  odometerKm: number | null;
+  garage: string | null;
+  /** Whole rupees */
+  cost: number | null;
+  notes: string | null;
+  nextDueDate: string | null;
+};
+export type NextService = { date: string; daysLeft: number; progress: number; type: ServiceRecord['type'] };
 
 export type AlertEvent = {
   id: string;
