@@ -91,3 +91,21 @@ The design uses red `#D93636` with near-black text. You asked to **keep the app'
 4. Satellite layer: needs a paid map key (MapTiler/Mapbox) — skip or add later.
 5. "Try sample data" demo mode: include or skip.
 6. Battery: the GT06N reports a level (0–6) and external power, not volts — show % instead of "12.6 V".
+
+## 7. Status (25 Oct 2026, branch `design/home-map`)
+
+Phases 1–7 are built, tested on the Android emulator against the local server, and committed. Current colours and logo kept throughout.
+
+| Phase | Done |
+|---|---|
+| 1 Foundation | DM Mono plates; shared kit (top bar, round buttons, chips, underline tabs, cards, sheets, dialogs, toggles, inputs, pill buttons) |
+| 2 Home + Map | Loading / offline / error / empty states; Map tab with plate labels, selected glow, zoom, full screen, bottom sheet, address (OpenStreetMap, cached on the server) |
+| 3 Vehicle details | Hero, growing map, totals, Replay a day, Driver / Service / Tracker tabs, More list for the old sections |
+| 4 Drivers + vehicles | Drivers backend (photo or illustration, licence, main/backup); Drivers grid and editor; Vehicles list and editor (type, colour, driver, plate, IMEI scan, remove) |
+| 5 Service | Service records backend; Service tab, add/edit record, next-service bar, Home badge |
+| 6 Trips | Vehicle chips + Compare, date/time window, week bars, route playback, gauge, comparison table; Trip detail with speed chart and driver |
+| 7 Alerts + Profile | Long stop and GPS lost alerts; alert settings and quiet hours; test push; Alerts and Profile screens; Edit profile |
+
+Decisions taken: 3D vehicle pictures kept (colour shows as the tile tint); satellite map and sample-data mode left out; battery shown as %; notification action buttons ("Call driver" / "Open vehicle") left out (needs a native notification library) — tapping a notification opens the vehicle.
+
+Not done yet: production deploy (server migrations: drivers, service records, profile/alert settings) and a release APK — both wait for approval.
