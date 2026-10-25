@@ -3,10 +3,12 @@
  *   Prata    — screen and section titles
  *   DM Sans  — everything else (body, buttons, inputs, big numbers, labels)
  * Pinyon Script is only used inside the logo (wordmark + "P" loader), as artwork.
+ * DM Mono is only used for vehicle number plates (the vehicle's identity).
  */
 import { Prata_400Regular } from '@expo-google-fonts/prata';
 import { PinyonScript_400Regular } from '@expo-google-fonts/pinyon-script';
 import { DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
+import { DMMono_500Medium } from '@expo-google-fonts/dm-mono';
 
 export const fontAssets = {
   Prata_400Regular,
@@ -14,6 +16,7 @@ export const fontAssets = {
   DMSans_400Regular,
   DMSans_500Medium,
   DMSans_700Bold,
+  DMMono_500Medium,
 };
 
 export const fonts = {
@@ -22,6 +25,7 @@ export const fonts = {
   body: 'DMSans_400Regular',
   medium: 'DMSans_500Medium',
   bold: 'DMSans_700Bold',
+  mono: 'DMMono_500Medium', // number plates
 };
 
 export const type = {
@@ -36,6 +40,12 @@ export const type = {
   small: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20 },
   caption: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 16, letterSpacing: 0.4 },
   label: { fontFamily: fonts.bold, fontSize: 12, lineHeight: 16, letterSpacing: 1.4 },
+  // Design v2 sizes
+  title: { fontFamily: fonts.heading, fontSize: 24, lineHeight: 32 },
+  name: { fontFamily: fonts.bold, fontSize: 16, lineHeight: 22 },
+  fieldLabel: { fontFamily: fonts.bold, fontSize: 13, lineHeight: 18 },
+  plate: { fontFamily: fonts.mono, fontSize: 17, lineHeight: 22, letterSpacing: 1 },
+  number: { fontFamily: fonts.bold, fontSize: 30, lineHeight: 36, letterSpacing: -0.5 },
 } as const;
 
 export type TypeVariant = keyof typeof type;

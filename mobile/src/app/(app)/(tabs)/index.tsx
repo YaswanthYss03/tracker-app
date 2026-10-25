@@ -2,7 +2,7 @@
 // button for full screen), quick actions, status filters, and one card per
 // vehicle with its number plate, driver, km today, speed and last update.
 import { useMemo, useRef, useState, type ComponentRef } from 'react';
-import { FlatList, Modal, Platform, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Modal, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -17,6 +17,7 @@ import { MapFullscreen, type Rect } from '@/components/MapFullscreen';
 import { VehicleArt } from '@/components/VehicleArt';
 import { AppText, Button, EmptyState, ErrorBox } from '@/components/ui';
 import { SkeletonRows } from '@/components/effects';
+import { Plate } from '@/components/kit';
 import { radius, space, type, useColors } from '@/theme';
 
 type Filter = 'all' | StatusGroup;
@@ -29,7 +30,6 @@ const TINT: Record<string, string> = {
   car: '#DCE6F3', bike: '#F4DEDE', scooter: '#D9EFEB', bus: '#F5EAC9', van: '#E3E7EC',
   truck: '#F6E2CC', auto: '#E1EFD8', bicycle: '#DCEFE0', tractor: '#F4DCDC', other: '#ECE3EF',
 };
-const MONO = Platform.select({ android: 'monospace', ios: 'Menlo', default: 'monospace' });
 
 export default function Home() {
   const c = useColors();
@@ -198,7 +198,7 @@ export default function Home() {
             {devices.map((d) => (
               <Pressable key={d.id} onPress={() => { setShareOpen(false); router.push(`/device/${d.id}?tab=sharing`); }} style={styles.sheetRow}>
                 <VehicleArt type={d.icon} size={32} />
-                <AppText style={{ fontFamily: MONO, fontWeight: '700' }}>{plateOrName(d)}</AppText>
+                <Plate value={plateOrName(d)} size={16} />
               </Pressable>
             ))}
           </View>
@@ -252,9 +252,7 @@ function VehicleCard({ device, state, group }: { device: Device; state: Live; gr
         <VehicleArt type={device.icon} size={50} dimmed={offline} />
       </View>
       <View style={{ flex: 1, gap: 6, minWidth: 0 }}>
-        <Text numberOfLines={1} maxFontSizeMultiplier={1.2} style={{ fontFamily: MONO, fontWeight: '700', fontSize: 17, letterSpacing: 0.5, color: c.text }}>
-          {device.registrationNumber || deviceName(device)}
-        </Text>
+        <Plate value={device.registrationNumber || deviceName(device)} />
         <View style={styles.driverRow}>
           <View style={[styles.avatar, { backgroundColor: c.dark ? c.surface2 : 'rgba(234,170,0,0.25)' }]}>
             <Text style={{ fontSize: 11, fontWeight: '700', color: c.text }}>{driver.charAt(0).toUpperCase()}</Text>

@@ -1,7 +1,7 @@
 // Trips of all vehicles, newest first, grouped by day. Tap one to open that
 // vehicle's trips (route on the map).
 import { useMemo, useState } from 'react';
-import { Platform, Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -11,11 +11,11 @@ import { duration, km, timeOnly } from '@/lib/format';
 import { VehicleArt } from '@/components/VehicleArt';
 import { AppText, EmptyState, ErrorBox, Segmented } from '@/components/ui';
 import { SkeletonRows } from '@/components/effects';
+import { Plate } from '@/components/kit';
 import { radius, space, type, useColors } from '@/theme';
 
 type Period = '1' | '7' | '30';
 type FleetTrip = Trip & { deviceId: string; vehicle: { registrationNumber: string | null; name: string; driverName: string | null; icon: string | null } };
-const MONO = Platform.select({ android: 'monospace', ios: 'Menlo', default: 'monospace' });
 
 function dayTitle(iso: string) {
   const d = new Date(iso);
@@ -77,9 +77,7 @@ export default function Trips() {
                 <VehicleArt type={item.vehicle.icon} size={38} />
               </View>
               <View style={{ flex: 1, gap: 3, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: MONO, fontWeight: '700', fontSize: 15, color: c.text }}>
-                  {item.vehicle.registrationNumber || item.vehicle.name}
-                </Text>
+                <Plate value={item.vehicle.registrationNumber || item.vehicle.name} size={15} />
                 <AppText variant="small" color="textMuted" numberOfLines={1}>
                   {timeOnly(item.startTime)} – {item.endTime ? timeOnly(item.endTime) : 'now'}
                   {item.vehicle.driverName ? ` · ${item.vehicle.driverName}` : ''}
