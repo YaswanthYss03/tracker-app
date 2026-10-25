@@ -1,6 +1,6 @@
 // Street address for a position, via our server (OpenStreetMap, cached there).
 // Rounded to ~110 m here so a moving vehicle doesn't ask on every update.
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api } from '@/api/client';
 
 export function useAddress(lat?: number | null, lon?: number | null) {
@@ -14,6 +14,8 @@ export function useAddress(lat?: number | null, lon?: number | null) {
     staleTime: Infinity,
     gcTime: 60 * 60_000,
     retry: false,
+    // Keep showing the last address while the next one loads (moving vehicle).
+    placeholderData: keepPreviousData,
   });
   return { address: q.data?.data.address ?? null, isLoading: has && q.isLoading };
 }

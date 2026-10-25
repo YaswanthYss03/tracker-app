@@ -1,4 +1,5 @@
-// One tracker: header with live status + tabs.
+// One vehicle. Without ?tab: the details overview (design v2).
+// With ?tab=trips|history|report|alerts|geofences|sharing|settings: that section.
 import { useState } from 'react';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,6 +21,7 @@ import { AlertsTab } from '@/screens/device/AlertsTab';
 import { GeofencesTab } from '@/screens/device/GeofencesTab';
 import { SharingTab } from '@/screens/device/SharingTab';
 import { SettingsTab } from '@/screens/device/SettingsTab';
+import { Overview } from '@/screens/device/Overview';
 
 type Tab = 'live' | 'history' | 'trips' | 'report' | 'alerts' | 'geofences' | 'sharing' | 'settings';
 
@@ -27,6 +29,7 @@ export default function DeviceScreen() {
   const c = useColors();
   const params = useLocalSearchParams<{ id: string; tab?: Tab }>();
   const [tab, setTab] = useState<Tab>(params.tab || 'live');
+  const overview = !params.tab;
   const [banner, setBanner] = useState<BannerAlert | null>(null);
   const { data, error, isLoading, refetch } = useQuery({
     queryKey: ['device', params.id],
@@ -62,6 +65,15 @@ export default function DeviceScreen() {
     ['settings', 'Settings'],
   ];
   const props = { device, state, isOwner, reload: refetch };
+
+  if (overview) {
+    return (
+      <>
+        <Overview {...props} />
+        {banner && <AlertBanner alert={banner} onClose={() => setBanner(null)} />}
+      </>
+    );
+  }
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.bg }}>

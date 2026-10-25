@@ -4,6 +4,7 @@
  *   GET    /positions          ?from&to&maxPoints   route history (max 7 days, simplified)   viewer
  *   GET    /trips              ?from&to             trips (max 31 days) incl. one in progress viewer
  *   GET    /trips/:tripId/route ?maxPoints          the path of one trip                     viewer
+ *   GET    /summary                                 totals: distance, driving hours, avg speed viewer
  *   GET    /reports/daily      ?from&to (YYYY-MM-DD) distance, driving/idle time per day      viewer
  *   GET    /events             ?from&to&type=a,b    alerts (max 31 days)                     viewer
  *   GET    /geofences                                                                        viewer
@@ -31,6 +32,7 @@ const tripsRepo = require('../../db/repositories/trips');
 const eventsRepo = require('../../db/repositories/events');
 const geofencesRepo = require('../../db/repositories/geofences');
 const shareLinksRepo = require('../../db/repositories/shareLinks');
+const { prisma } = require('../../db/client');
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -126,6 +128,26 @@ function createTrackingRouter({ ownership, registry, processors, hooks, config, 
     const end = trip.endTime ?? new Date();
     const rows = await positionsRepo.findRoute(req.device.id, { from: trip.startTime, to: end });
     res.json({ data: { trip: tripDto(trip), ...routeDto(rows, maxPoints) } });
+  }));
+
+  // Totals over all saved trips (trips are deleted when the vehicle is released,
+  // so these are the current owner's numbers).
+  router.get('/:deviceId/summary', viewer, wrap(async (req, res) => {
+    const [row] = await prisma.$queryRaw`
+      SELECT COALESCE(SUM(distance_m), 0)::bigint AS distance_m,
+             COALESCE(SUM(GREATEST(duration_s - idle_s, 0)), 0)::bigint AS driving_s,
+             COUNT(*)::int AS trips
+      FROM trips WHERE device_id = ${req.device.id}::uuid AND end_time IS NOT NULL`;
+    const distanceKm = Number(row.distance_m) / 1000;
+    const drivingH = Number(row.driving_s) / 3600;
+    res.json({
+      data: {
+        totalKm: Math.round(distanceKm * 10) / 10,
+        drivingHours: Math.round(drivingH * 10) / 10,
+        avgSpeed: drivingH > 0.01 ? Math.round(distanceKm / drivingH) : 0,
+        trips: row.trips,
+      },
+    });
   }));
 
   // ---- daily report ----

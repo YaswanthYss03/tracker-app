@@ -57,3 +57,23 @@ test('geocode: address for a position, login required, coordinates validated', a
   assert.equal(res.body.data.address, 'Test Road, near 11.02,76.96');
   assert.equal((await api('GET', '/api/v1/geocode/reverse?lat=200&lon=77', { token: u.accessToken })).status, 400);
 });
+
+test('summary: totals over finished trips (distance, driving hours, average speed)', async () => {
+  const reg = await api('POST', '/api/v1/admin/devices', { key: ctx.adminKey, body: { imei: '359710049098003' } });
+  const u = (await api('POST', '/api/v1/auth/register', { body: { email: 's@x.com', password: 'correct horse battery', acceptTerms: true } })).body.data;
+  const id = (await api('POST', '/api/v1/devices/claim', { token: u.accessToken, body: { imei: '359710049098003', activationCode: reg.body.data.activationCode } })).body.data.id;
+  let res = await api('GET', `/api/v1/devices/${id}/summary`, { token: u.accessToken });
+  assert.deepEqual(res.body.data, { totalKm: 0, drivingHours: 0, avgSpeed: 0, trips: 0 });
+  const t = Date.now() - 5 * 3600_000;
+  await ctx.prisma.trip.createMany({
+    data: [
+      { deviceId: id, startTime: new Date(t), endTime: new Date(t + 3600_000), startLat: 11, startLon: 77, distanceM: 40_000, durationS: 3600, idleS: 600 },
+      { deviceId: id, startTime: new Date(t + 2 * 3600_000), endTime: new Date(t + 3 * 3600_000), startLat: 11, startLon: 77, distanceM: 20_000, durationS: 3600, idleS: 0 },
+      { deviceId: id, startTime: new Date(), startLat: 11, startLon: 77, distanceM: 5_000, durationS: 600 }, // in progress: not counted
+    ],
+  });
+  res = await api('GET', `/api/v1/devices/${id}/summary`, { token: u.accessToken });
+  assert.deepEqual(res.body.data, { totalKm: 60, drivingHours: 1.8, avgSpeed: 33, trips: 2 });
+  const other = (await api('POST', '/api/v1/auth/register', { body: { email: 's2@x.com', password: 'correct horse battery', acceptTerms: true } })).body.data;
+  assert.equal((await api('GET', `/api/v1/devices/${id}/summary`, { token: other.accessToken })).status, 404);
+});

@@ -153,6 +153,7 @@ function buildHtml({ dark, center, zoom, routeColor }: { dark: boolean; center: 
   .lbl{position:absolute;left:50%;top:100%;transform:translate(-50%,2px);white-space:nowrap;font:500 11px/1 'DM Mono',monospace;letter-spacing:.5px;color:${brand.aubergine};background:#fff;padding:4px 7px;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.25);pointer-events:none;display:none}
   .labels .lbl{display:block}
   .sel .lbl{display:block;background:${brand.aubergine};color:#fff}
+  .lbl:empty{display:none !important}
   /* soft marigold glow behind the selected vehicle */
   .glow{position:absolute;left:50%;top:50%;width:96px;height:96px;margin:-48px 0 0 -48px;border-radius:50%;background:radial-gradient(circle,rgba(234,170,0,.55) 0%,rgba(234,170,0,.25) 45%,rgba(234,170,0,0) 70%);pointer-events:none;display:none;animation:pulse 1.8s ease-in-out infinite}
   .sel .glow{display:block}
