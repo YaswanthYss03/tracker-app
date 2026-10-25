@@ -45,6 +45,12 @@ export default function Account() {
       </Card>
 
       <Card style={{ gap: space.sm }}>
+        <AppText variant="h3">My fleet</AppText>
+        <Button title="Vehicles" icon="car-sport-outline" variant="ghost" onPress={() => router.push('/vehicles')} style={{ justifyContent: 'flex-start' }} />
+        <Button title="Drivers" icon="people-outline" variant="ghost" onPress={() => router.push('/drivers')} style={{ justifyContent: 'flex-start' }} />
+      </Card>
+
+      <Card style={{ gap: space.sm }}>
         <AppText variant="h3">Appearance</AppText>
         <AppText variant="small" color="textMuted">System follows your phone's dark theme setting.</AppText>
         <View style={{ marginHorizontal: -space.lg }}>

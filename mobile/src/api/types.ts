@@ -34,7 +34,12 @@ export type Device = {
   icon: string | null;
   /** Number plate, e.g. TN 38 AB 1234 */
   registrationNumber?: string | null;
+  /** Main driver's name (same as mainDriver?.name). */
   driverName?: string | null;
+  mainDriver?: Driver | null;
+  backupDriver?: Driver | null;
+  /** Body colour: white, silver, black, blue, red, yellow, orange, green */
+  color?: string | null;
   /** km driven today (trips started since local midnight, incl. in progress) */
   todayKm?: number;
   model: string;
@@ -47,6 +52,22 @@ export type Device = {
   timezone: string;
   live: Live;
 };
+
+export type Driver = {
+  id: string;
+  name: string;
+  phone: string | null;
+  licenceNo: string | null;
+  /** YYYY-MM-DD */
+  licenceExpiry: string | null;
+  /** Illustration key a1..a8 (used when there is no photo). */
+  avatar: string | null;
+  /** /api/v1/drivers/:id/photo?v=... (needs the access token) */
+  photoUrl: string | null;
+};
+
+export type DriverVehicle = { id: string; name: string | null; registrationNumber: string | null; icon: string | null };
+export type DriverFull = Driver & { mainOf: DriverVehicle[]; backupOf: DriverVehicle[] };
 
 export type AlertEvent = {
   id: string;

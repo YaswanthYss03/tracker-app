@@ -1,4 +1,5 @@
-// Settings: name, speed limit, timezone (owner); notifications (everyone); release / leave.
+// Settings: speed limit, timezone (owner); notifications (everyone); release / leave.
+// Plate, name, type, colour and drivers are edited in the vehicle editor.
 import { useState } from 'react';
 import { ScrollView, Switch, View } from 'react-native';
 import { router } from 'expo-router';
@@ -7,8 +8,6 @@ import { api, errorText } from '@/api/client';
 import { useAuth } from '@/auth/AuthProvider';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { AppText, Button, Card, ErrorBox, Field, Row, Segmented } from '@/components/ui';
-import { VehiclePicker } from '@/components/VehiclePicker';
-import { vehicleOf, type VehicleType } from '@/lib/vehicles';
 import { space, useColors } from '@/theme';
 import type { TabProps } from './types';
 
@@ -18,12 +17,8 @@ export function SettingsTab({ device, isOwner, reload }: TabProps) {
   const c = useColors();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [name, setName] = useState(device.name || '');
-  const [plate, setPlate] = useState(device.registrationNumber || '');
-  const [driver, setDriver] = useState(device.driverName || '');
   const [limit, setLimit] = useState(device.speedLimitKmh ? String(device.speedLimitKmh) : '');
   const [timezone, setTimezone] = useState(device.timezone);
-  const [vehicle, setVehicle] = useState<VehicleType | null>(vehicleOf(device.icon)?.type ?? null);
   const [notify, setNotify] = useState(device.notify);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -35,10 +30,7 @@ export function SettingsTab({ device, isOwner, reload }: TabProps) {
     try {
       await api(`/devices/${device.id}`, {
         method: 'PATCH',
-        body: {
-          name: name.trim() || null, speedLimitKmh: limit ? Number(limit) : null, timezone, icon: vehicle,
-          registrationNumber: plate.trim() || null, driverName: driver.trim() || null,
-        },
+        body: { speedLimitKmh: limit ? Number(limit) : null, timezone },
       });
       setSaved(true);
       reload();
@@ -72,10 +64,7 @@ export function SettingsTab({ device, isOwner, reload }: TabProps) {
       {isOwner && (
         <Card style={{ gap: space.md }}>
           <AppText variant="h3">Tracker</AppText>
-          <Field label="Vehicle number" value={plate} onChangeText={(v) => setPlate(v.toUpperCase())} autoCapitalize="characters" autoCorrect={false} placeholder="TN 38 AB 1234" />
-          <Field label="Driver name" value={driver} onChangeText={setDriver} placeholder="e.g. Ravi" />
-          <Field label="Name" value={name} onChangeText={setName} placeholder="e.g. Family car" />
-          <VehiclePicker value={vehicle} onChange={setVehicle} />
+          <Button title="Edit plate, name, type, colour and driver" icon="create-outline" variant="secondary" small onPress={() => router.push(`/vehicles/edit?id=${device.id}`)} />
           <Field
             label="Speed limit for alerts (km/h)"
             value={limit}

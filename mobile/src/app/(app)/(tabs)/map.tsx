@@ -132,7 +132,7 @@ export default function MapTab() {
         </ScrollView>
 
         <View style={styles.vehicle}>
-          <VehicleTile type={sel.d.icon} width={64} height={54} dimmed={g === 'offline'} />
+          <VehicleTile type={sel.d.icon} color={sel.d.color} width={64} height={54} dimmed={g === 'offline'} />
           <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
             <Plate value={plateOrName(sel.d)} size={18} />
             <View style={styles.statusRow}>

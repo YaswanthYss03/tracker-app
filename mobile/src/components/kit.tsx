@@ -18,6 +18,7 @@ import { radius, shadow, space, type, useColors } from '@/theme';
 import type { StatusGroup } from '@/lib/vehicleStatus';
 import { statusColor } from '@/lib/vehicleStatus';
 import { VehicleArt } from './VehicleArt';
+import { colorOf } from '@/lib/vehicleColors';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 const tap = () => Haptics.selectionAsync().catch(() => {});
@@ -243,10 +244,16 @@ const TINT: Record<string, string> = {
 };
 
 /** Vehicle picture on a soft tinted tile. */
-export function VehicleTile({ type: kind, width = 76, height = 62, dimmed }: { type?: string | null; width?: number; height?: number; dimmed?: boolean }) {
+export function VehicleTile({ type: kind, width = 76, height = 62, dimmed, color, style }: {
+  type?: string | null; width?: ViewStyle['width']; height?: number; dimmed?: boolean;
+  /** Body colour key: tints the tile in that colour. */
+  color?: string | null;
+  style?: StyleProp<ViewStyle>;
+}) {
   const c = useColors();
+  const bg = c.dark ? c.surface2 : colorOf(color)?.tint ?? TINT[kind ?? 'other'] ?? TINT.other;
   return (
-    <View style={{ width, height, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: c.dark ? c.surface2 : TINT[kind ?? 'other'] ?? TINT.other }}>
+    <View style={[{ width, height, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: bg }, style]}>
       <VehicleArt type={kind} size={Math.round(height * 0.8)} dimmed={dimmed} />
     </View>
   );

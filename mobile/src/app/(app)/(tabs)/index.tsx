@@ -18,6 +18,7 @@ import { VehicleArt } from '@/components/VehicleArt';
 import { AppText, ErrorBox } from '@/components/ui';
 import { SkeletonRows } from '@/components/effects';
 import { Banner, PillButton, Plate, VehicleTile } from '@/components/kit';
+import { DriverAvatar } from '@/components/DriverAvatar';
 import { radius, space, type, useColors } from '@/theme';
 
 type Filter = 'all' | StatusGroup;
@@ -262,13 +263,17 @@ function VehicleCard({ device, state, group }: { device: Device; state: Live; gr
       accessibilityLabel={`${plateOrName(device)}, driver ${driver}, ${offline ? 'offline' : `${state.speed ?? 0} kilometres per hour`}`}
       style={({ pressed }) => [styles.card, { backgroundColor: pressed ? c.surface : c.surface, borderColor: pressed ? c.accent : c.border }]}
     >
-      <VehicleTile type={device.icon} width={72} height={60} dimmed={offline} />
+      <VehicleTile type={device.icon} color={device.color} width={72} height={60} dimmed={offline} />
       <View style={{ flex: 1, gap: 6, minWidth: 0 }}>
         <Plate value={device.registrationNumber || deviceName(device)} />
         <View style={styles.driverRow}>
-          <View style={[styles.avatar, { backgroundColor: c.dark ? c.surface2 : 'rgba(234,170,0,0.25)' }]}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: c.text }}>{driver.charAt(0).toUpperCase()}</Text>
-          </View>
+          {device.mainDriver ? (
+            <DriverAvatar driver={device.mainDriver} size={20} />
+          ) : (
+            <View style={[styles.avatar, { backgroundColor: c.dark ? c.surface2 : 'rgba(234,170,0,0.25)' }]}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: c.text }}>{driver.charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
           <AppText variant="small" color="textMuted" numberOfLines={1} style={{ flexShrink: 1 }}>
             {driver} · {device.todayKm ?? 0} km
           </AppText>

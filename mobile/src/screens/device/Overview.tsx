@@ -7,16 +7,18 @@ import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-na
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { api } from '@/api/client';
-import { plateOrName } from '@/api/types';
+import { plateOrName, type Driver } from '@/api/types';
+import { useDrivers } from '@/lib/drivers';
+import { DriverAvatar } from '@/components/DriverAvatar';
 import { useAddress } from '@/lib/address';
 import { timeAgo, timeOnly } from '@/lib/format';
 import { shareLiveLocation } from '@/lib/share';
 import { STATUS_LABEL, statusGroup } from '@/lib/vehicleStatus';
 import { AppMap } from '@/components/Map';
-import { Banner, Card, PillButton, Plate, RoundButton, Stat, StatusDot, TopBar, UnderlineTabs, VehicleTile, accentTint } from '@/components/kit';
+import { Banner, Card, PillButton, Plate, RoundButton, Sheet, Stat, StatusDot, TopBar, UnderlineTabs, VehicleTile, accentTint } from '@/components/kit';
 import { radius, shadow, space, type, useColors } from '@/theme';
 import type { TabProps } from './types';
 
@@ -54,13 +56,13 @@ export function Overview({ device, state, isOwner }: TabProps) {
       <TopBar
         onBack={() => router.back()}
         title={<Plate value={plateOrName(device)} size={20} />}
-        right={isOwner ? <RoundButton icon="create-outline" label="Edit vehicle" onPress={() => open('settings')} size={40} iconSize={20} /> : undefined}
+        right={isOwner ? <RoundButton icon="create-outline" label="Edit vehicle" onPress={() => router.push(`/vehicles/edit?id=${device.id}`)} size={40} iconSize={20} /> : undefined}
       />
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: 48, gap: space.lg }}>
         {/* Hero */}
         <View style={styles.hero}>
-          <VehicleTile type={device.icon} width={104} height={86} dimmed={g === 'offline'} />
+          <VehicleTile type={device.icon} color={device.color} width={104} height={86} dimmed={g === 'offline'} />
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             {g === 'offline' ? (
               <Text style={[type.title, { color: c.text }]}>Offline</Text>
@@ -111,7 +113,7 @@ export function Overview({ device, state, isOwner }: TabProps) {
 
         <UnderlineTabs<Section> value={section} onChange={setSection} options={[['driver', 'Driver'], ['service', 'Service'], ['tracker', 'Tracker']]} />
 
-        {section === 'driver' && <DriverSection name={device.driverName} canEdit={isOwner} onEdit={() => open('settings')} />}
+        {section === 'driver' && <DriverSection device={device} canEdit={isOwner} />}
 
         {section === 'service' && (
           <Card style={{ alignItems: 'center', gap: space.sm, paddingVertical: space.xl }}>
@@ -160,36 +162,104 @@ export function Overview({ device, state, isOwner }: TabProps) {
   );
 }
 
-function DriverSection({ name, canEdit, onEdit }: { name?: string | null; canEdit: boolean; onEdit: () => void }) {
+function DriverSection({ device, canEdit }: { device: TabProps['device']; canEdit: boolean }) {
   const c = useColors();
-  if (!name) {
+  const qc = useQueryClient();
+  const { data: drivers = [] } = useDrivers();
+  const [pick, setPick] = useState<'main' | 'backup' | null>(null);
+  const [busy, setBusy] = useState(false);
+  const main = device.mainDriver ?? null;
+  const backup = device.backupDriver ?? null;
+
+  async function patch(body: Record<string, string | null>) {
+    setBusy(true);
+    try {
+      await api(`/devices/${device.id}`, { method: 'PATCH', body });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['device', device.id] }),
+        qc.invalidateQueries({ queryKey: ['devices'] }),
+        qc.invalidateQueries({ queryKey: ['drivers'] }),
+      ]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const choices = drivers.filter((d) => d.id !== (pick === 'main' ? backup?.id : main?.id));
+
+  return (
+    <View>
+      <DriverCard role="MAIN" driver={main} canEdit={canEdit} onAdd={() => setPick('main')} onChange={() => setPick('main')} />
+      {canEdit && main && backup && (
+        <View style={styles.swapWrap} pointerEvents="box-none">
+          <RoundButton icon="swap-vertical" label="Swap main and backup driver" onPress={() => !busy && patch({ mainDriverId: backup.id, backupDriverId: main.id })} size={40} iconSize={18} />
+        </View>
+      )}
+      <View style={{ height: space.md }} />
+      <DriverCard role="BACKUP" driver={backup} canEdit={canEdit} onAdd={() => setPick('backup')} onChange={() => setPick('backup')} />
+
+      <Sheet visible={!!pick} onClose={() => setPick(null)} title={pick === 'main' ? 'Main driver' : 'Backup driver'}>
+        <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: 2 }}>
+          {choices.map((d) => {
+            const on = (pick === 'main' ? main?.id : backup?.id) === d.id;
+            return (
+              <Pressable
+                key={d.id}
+                onPress={() => { const k = pick === 'main' ? 'mainDriverId' : 'backupDriverId'; setPick(null); patch({ [k]: d.id }); }}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                style={styles.pickRow}
+              >
+                <DriverAvatar driver={d} size={40} />
+                <Text style={[type.bodyStrong, { color: c.text, flex: 1 }]}>{d.name}</Text>
+                {on && <Ionicons name="checkmark-circle" size={22} color={c.text} />}
+              </Pressable>
+            );
+          })}
+          {choices.length === 0 && <Text style={[type.small, { color: c.textMuted }]}>No other drivers yet.</Text>}
+        </ScrollView>
+        <PillButton title="Add a new driver" icon="person-add-outline" variant="secondary" onPress={() => { setPick(null); router.push('/drivers/edit'); }} />
+        {(pick === 'main' ? main : backup) && (
+          <PillButton
+            title={`Remove ${pick === 'main' ? 'main' : 'backup'} driver`}
+            variant="danger"
+            onPress={() => { const k = pick === 'main' ? 'mainDriverId' : 'backupDriverId'; setPick(null); patch({ [k]: null }); }}
+          />
+        )}
+      </Sheet>
+    </View>
+  );
+}
+
+function DriverCard({ role, driver, canEdit, onAdd, onChange }: {
+  role: 'MAIN' | 'BACKUP'; driver: Driver | null; canEdit: boolean; onAdd: () => void; onChange: () => void;
+}) {
+  const c = useColors();
+  if (!driver) {
     return (
-      <Pressable
-        disabled={!canEdit}
-        onPress={onEdit}
-        accessibilityRole="button"
-        style={[styles.driverCard, styles.dashed, { borderColor: c.border }]}
-      >
+      <Pressable disabled={!canEdit} onPress={onAdd} accessibilityRole="button" style={[styles.driverCard, styles.dashed, { borderColor: c.border }]}>
         <View style={[styles.avatar, { backgroundColor: c.surface }]}>
           <Ionicons name="add" size={26} color={c.text} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={[type.caption, { color: c.textMuted }]}>MAIN</Text>
+          <Text style={[type.caption, { color: c.textMuted }]}>{role}</Text>
           <Text style={[type.name, { color: c.text }]}>{canEdit ? 'Add driver' : 'No driver set'}</Text>
         </View>
       </Pressable>
     );
   }
   return (
-    <Card style={styles.driverCard}>
-      <View style={[styles.avatar, { backgroundColor: accentTint }]}>
-        <Text style={[type.title, { color: c.text, fontSize: 22 }]}>{name.charAt(0).toUpperCase()}</Text>
-      </View>
+    <Card style={styles.driverCard} onPress={() => router.push(`/drivers/edit?id=${driver.id}`)}>
+      <DriverAvatar driver={driver} size={56} />
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[type.caption, { color: c.text, fontFamily: type.fieldLabel.fontFamily }]}>MAIN</Text>
-        <Text numberOfLines={1} style={[type.name, { color: c.text }]}>{name}</Text>
+        <Text style={[type.caption, { color: c.text, fontFamily: type.fieldLabel.fontFamily }]}>{role}</Text>
+        <Text numberOfLines={1} style={[type.name, { color: c.text }]}>{driver.name}</Text>
+        {driver.phone ? <Text numberOfLines={1} style={[type.small, { color: c.textMuted }]}>{driver.phone}</Text> : null}
       </View>
-      {canEdit && <RoundButton icon="create-outline" label="Edit driver" onPress={onEdit} size={40} iconSize={18} />}
+      {driver.phone ? (
+        <RoundButton icon="call-outline" label={`Call ${driver.name}`} onPress={() => Linking.openURL(`tel:${driver.phone!.replace(/[^+\d]/g, '')}`)} size={40} iconSize={18} />
+      ) : null}
+      {canEdit && <RoundButton icon="create-outline" label={`Change ${role.toLowerCase()} driver`} onPress={onChange} size={40} iconSize={18} />}
     </Card>
   );
 }
@@ -236,5 +306,7 @@ const styles = StyleSheet.create({
   driverCard: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.card },
   dashed: { borderWidth: 1.5, borderStyle: 'dashed' },
   avatar: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  swapWrap: { position: 'absolute', left: 0, right: 0, top: '50%', marginTop: -20, alignItems: 'center', zIndex: 2 },
+  pickRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 56 },
   moreRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, minHeight: 52 },
 });

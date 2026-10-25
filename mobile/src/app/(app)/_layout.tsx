@@ -8,7 +8,9 @@ export default function AppLayout() {
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg }, animation: 'slide_from_right' }}>
       <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="add-tracker" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="add-tracker" options={{ animation: 'slide_from_bottom' }} />
+      <Stack.Screen name="vehicles/edit" options={{ animation: 'slide_from_bottom' }} />
+      <Stack.Screen name="drivers/edit" options={{ animation: 'slide_from_bottom' }} />
       <Stack.Screen name="device/[id]" />
       <Stack.Screen name="change-password" />
     </Stack>
