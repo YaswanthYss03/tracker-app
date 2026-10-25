@@ -27,7 +27,7 @@ test('vehicle number and driver: set on claim, edited later, validated, cleared 
   await api('POST', `/api/v1/devices/${id}/release`, { token: u.accessToken, body: { confirmImei: '359710049098001' } });
   const d = await ctx.prisma.device.findUnique({ where: { id } });
   assert.equal(d.registrationNumber, null);
-  assert.equal(d.driverName, null);
+  assert.equal(d.mainDriverId, null);
 });
 
 test('vehicle list includes km driven today; /me/trips lists trips of all vehicles', async () => {

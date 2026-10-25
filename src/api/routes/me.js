@@ -79,7 +79,7 @@ function createMeRouter({ authService }) {
     );
     const rows = await prisma.trip.findMany({
       where: { startTime: { gte: new Date(Date.now() - q.days * 86_400_000) }, device: { access: { some: { userId: req.user.id } } } },
-      include: { device: { select: { id: true, name: true, imei: true, registrationNumber: true, driverName: true, icon: true } } },
+      include: { device: { select: { id: true, name: true, imei: true, registrationNumber: true, icon: true, mainDriver: { select: { name: true } } } } },
       orderBy: { startTime: 'desc' },
       take: q.limit,
     });
@@ -91,7 +91,7 @@ function createMeRouter({ authService }) {
         vehicle: {
           registrationNumber: t.device.registrationNumber,
           name: t.device.name || `Tracker ${t.device.imei.slice(-4)}`,
-          driverName: t.device.driverName,
+          driverName: t.device.mainDriver?.name ?? null,
           icon: t.device.icon,
         },
       })),

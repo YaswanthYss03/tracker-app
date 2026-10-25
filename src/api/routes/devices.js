@@ -5,7 +5,8 @@
  *   POST   /claim                         { imei, activationCode, name?, vehicleType? } -> 201 (200 if already mine)
  *   GET    /:deviceId                     one tracker                         (owner, viewer)
  *   GET    /:deviceId/live                live state only (light, for polling) (owner, viewer)
- *   PATCH  /:deviceId                     { name, icon (vehicle type), speedLimitKmh, timezone } (owner)
+ *   PATCH  /:deviceId                     { name, icon (vehicle type), registrationNumber, color,
+ *                                           mainDriverId, backupDriverId, speedLimitKmh, timezone } (owner)
  *   PATCH  /:deviceId/notifications       { enabled } my alert setting         (owner, viewer)
  *   GET    /:deviceId/members             who has access                       (owner)
  *   POST   /:deviceId/viewers             { email } share with someone         (owner)
@@ -21,6 +22,7 @@ const { requireDeviceAccess } = require('../middleware');
 const { badRequest } = require('../../lib/errors');
 const { prisma } = require('../../db/client');
 const { localMidnight } = require('../../lib/time');
+const driversRepo = require('../../db/repositories/drivers');
 
 // Vehicle type is stored in devices.icon; apps show a matching map icon.
 const VEHICLE_TYPES = ['car', 'bike', 'scooter', 'bus', 'van', 'truck', 'auto', 'bicycle', 'tractor', 'other'];
@@ -31,7 +33,10 @@ const registrationNumber = z
   .trim()
   .transform((v) => v.toUpperCase().replace(/\s+/g, ' '))
   .pipe(z.string().regex(/^[A-Z0-9][A-Z0-9 -]{2,14}$/, 'use letters, numbers, spaces or hyphens (3-15 characters)'));
+// Older apps send a driver's name; it becomes (or matches) one of my drivers.
 const driverName = z.string().trim().min(1).max(60);
+const VEHICLE_COLORS = ['white', 'silver', 'black', 'blue', 'red', 'yellow', 'orange', 'green'];
+const color = z.enum(VEHICLE_COLORS);
 
 const claimSchema = z.object({
   imei: z.string().trim().regex(/^\d{15}$/, 'must be the 15-digit IMEI'),
@@ -40,6 +45,8 @@ const claimSchema = z.object({
   vehicleType: vehicleType.optional(),
   registrationNumber: registrationNumber.optional(),
   driverName: driverName.optional(),
+  mainDriverId: schemas.uuid.optional(),
+  color: color.optional(),
 });
 const updateSchema = z
   .object({
@@ -47,6 +54,9 @@ const updateSchema = z
     icon: vehicleType.nullable().optional(), // vehicle type
     registrationNumber: registrationNumber.nullable().optional(),
     driverName: driverName.nullable().optional(),
+    mainDriverId: schemas.uuid.nullable().optional(),
+    backupDriverId: schemas.uuid.nullable().optional(),
+    color: color.nullable().optional(),
     speedLimitKmh: z.number().int().min(10).max(250).nullable().optional(),
     timezone: z.string().refine(isValidTimezone, 'unknown timezone').optional(),
   })
@@ -70,6 +80,29 @@ async function distanceToday(devices) {
   return new Map(rows.map((r) => [r.id, Math.round(Number(r.m) / 100) / 10]));
 }
 
+/**
+ * Turns driverName / mainDriverId / backupDriverId into device fields, checking
+ * the drivers are mine. Main and backup can't be the same person: setting the
+ * backup as main moves them (the backup slot is cleared).
+ */
+async function driverFields(userId, body, current = {}) {
+  const out = {};
+  if (body.driverName !== undefined) out.mainDriverId = body.driverName ? await driversRepo.idForName(userId, body.driverName) : null;
+  if (body.mainDriverId !== undefined) out.mainDriverId = body.mainDriverId;
+  if (body.backupDriverId !== undefined) out.backupDriverId = body.backupDriverId;
+  const ids = [...new Set([out.mainDriverId, out.backupDriverId].filter(Boolean))];
+  if (ids.length && (await prisma.driver.count({ where: { userId, id: { in: ids } } })) !== ids.length) {
+    throw badRequest('Driver not found');
+  }
+  const main = out.mainDriverId !== undefined ? out.mainDriverId : current.mainDriverId;
+  const backup = out.backupDriverId !== undefined ? out.backupDriverId : current.backupDriverId;
+  if (main && main === backup) {
+    if (body.backupDriverId !== undefined) throw badRequest('Main and backup driver must be different people');
+    out.backupDriverId = null;
+  }
+  return out;
+}
+
 function createDevicesRouter({ ownership, cache, limits }) {
   const router = express.Router();
   const viewer = requireDeviceAccess(ownership, 'viewer');
@@ -78,6 +111,7 @@ function createDevicesRouter({ ownership, cache, limits }) {
 
   router.get('/', wrap(async (req, res) => {
     const rows = await ownership.listForUser(req.user.id);
+    await driversRepo.attachToDevices(rows.map((a) => a.device));
     const todayKm = await distanceToday(rows.map((a) => a.device));
     res.json({ data: rows.map((a) => ({ ...dto(a.device, a), todayKm: todayKm.get(a.device.id) ?? 0 })), count: rows.length });
   }));
@@ -85,28 +119,33 @@ function createDevicesRouter({ ownership, cache, limits }) {
   router.post('/claim', limits.claim, wrap(async (req, res) => {
     const body = parse(claimSchema, req.body);
     let { device, alreadyOwned } = await ownership.claim(req.user.id, body);
-    if (!alreadyOwned && (body.vehicleType || body.registrationNumber || body.driverName)) {
+    if (!alreadyOwned && (body.vehicleType || body.registrationNumber || body.driverName || body.mainDriverId || body.color)) {
       device = await ownership.updateDevice(device.id, {
         ...(body.vehicleType && { icon: body.vehicleType }),
         ...(body.registrationNumber && { registrationNumber: body.registrationNumber }),
-        ...(body.driverName && { driverName: body.driverName }),
+        ...(body.color && { color: body.color }),
+        ...(await driverFields(req.user.id, { driverName: body.driverName, mainDriverId: body.mainDriverId })),
       });
     }
     const access = await ownership.getAccess(req.user.id, device.id);
+    await driversRepo.attachToDevices([device]);
     res.status(alreadyOwned ? 200 : 201).json({ data: dto(device, access) });
   }));
 
-  router.get('/:deviceId', viewer, (req, res) => {
+  router.get('/:deviceId', viewer, wrap(async (req, res) => {
+    await driversRepo.attachToDevices([req.device]);
     res.json({ data: dto(req.device, req.access) });
-  });
+  }));
 
   router.get('/:deviceId/live', viewer, (req, res) => {
     res.json({ data: { id: req.device.id, ...liveState(req.device, cache) } });
   });
 
   router.patch('/:deviceId', owner, wrap(async (req, res) => {
-    const patch = parse(updateSchema, req.body);
-    const device = await ownership.updateDevice(req.device.id, patch);
+    const { driverName, mainDriverId, backupDriverId, ...patch } = parse(updateSchema, req.body);
+    const drivers = await driverFields(req.user.id, { driverName, mainDriverId, backupDriverId }, req.device);
+    const device = await ownership.updateDevice(req.device.id, { ...patch, ...drivers });
+    await driversRepo.attachToDevices([device]);
     res.json({ data: dto(device, req.access) });
   }));
 

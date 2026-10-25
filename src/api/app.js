@@ -24,6 +24,7 @@ const { createDevicesRouter } = require('./routes/devices');
 const { createAdminRouter } = require('./routes/admin');
 const { createTrackingRouter, createPublicRouter } = require('./routes/tracking');
 const { createGeocodeRouter } = require('./routes/geocode');
+const { createDriversRouter } = require('./routes/drivers');
 const { createGeocoder } = require('../services/geocoder');
 
 const WEB_DIST = path.join(__dirname, '../../web/dist');
@@ -104,6 +105,7 @@ function createApp(deps) {
     logger,
   });
   app.use('/api/v1/geocode', auth, createGeocodeRouter({ geocoder }));
+  app.use('/api/v1/drivers', auth, createDriversRouter());
   // Mobile app asks this at start: below minVersion it must update.
   app.get('/api/v1/app/config', (req, res) => {
     res.json({

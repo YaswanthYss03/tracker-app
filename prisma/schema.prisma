@@ -58,6 +58,7 @@ model User {
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   access        DeviceAccess[]
+  drivers       Driver[]
   pushTokens    PushToken[]
   refreshTokens RefreshToken[]
   passwordResets PasswordReset[]
@@ -79,7 +80,11 @@ model Device {
   name               String?
   icon               String? // vehicle type: car, bike, bus, ...
   registrationNumber String?      @map("registration_number") // vehicle number plate, e.g. TN 38 AB 1234
-  driverName         String?      @map("driver_name")
+  color              String? // body colour: white, silver, black, blue, red, yellow, orange, green
+  mainDriverId       String?      @map("main_driver_id") @db.Uuid
+  backupDriverId     String?      @map("backup_driver_id") @db.Uuid
+  mainDriver         Driver?      @relation("MainDriver", fields: [mainDriverId], references: [id], onDelete: SetNull)
+  backupDriver       Driver?      @relation("BackupDriver", fields: [backupDriverId], references: [id], onDelete: SetNull)
   speedLimitKmh      Int?         @map("speed_limit_kmh") @db.SmallInt
   timezone           String       @default("Asia/Kolkata")
 
@@ -114,6 +119,29 @@ model Device {
 
   @@index([status])
   @@map("devices")
+}
+
+// A user's drivers. Vehicles point at a main and a backup driver.
+model Driver {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  name           String
+  phone          String?
+  licenceNo      String?   @map("licence_no")
+  licenceExpiry  DateTime? @map("licence_expiry") @db.Date
+  avatar         String? // illustration key (a1..a8) when there is no photo
+  photo          Bytes? // small JPEG/PNG (max 70 KB)
+  photoType      String?   @map("photo_type")
+  photoUpdatedAt DateTime? @map("photo_updated_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mainOf   Device[] @relation("MainDriver")
+  backupOf Device[] @relation("BackupDriver")
+
+  @@index([userId])
+  @@map("drivers")
 }
 
 model DeviceAccess {
