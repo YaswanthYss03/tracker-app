@@ -1,29 +1,23 @@
-// Trips (minimal). "Logged" = trips you start by hand with +: everything the
-// vehicle records after you start one goes into it, until you start the next.
-// "Auto" = trips the tracker detected on its own (ignition on, moving).
-import { useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+// Trips (minimal): trips you start by hand with +. Everything the vehicle
+// records after you start one goes into it, until you start the next.
+// Not named? They are called Trip 1, Trip 2, ...
+import { useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, errorText } from '@/api/client';
-import type { Trip, TripLog } from '@/api/types';
+import type { TripLog } from '@/api/types';
 import { dateTime, duration, km, timeOnly } from '@/lib/format';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { DIcon } from '@/components/DesignIcon';
-import { MiniTabs } from '@/components/MiniTabs';
-import { Dialog, Input } from '@/components/kit';
+import { Dialog } from '@/components/kit';
 import { fonts } from '@/theme';
 import { useHomeColors as useColors } from '@/theme/designHome';
 import type { TabProps } from './types';
 
-type Mode = 'logged' | 'auto';
-type Period = '1' | '7' | '30';
-
 export function TripsTab({ device, isOwner }: TabProps) {
   const c = useColors();
   const qc = useQueryClient();
-  const [mode, setMode] = useState<Mode>('logged');
-  const [period, setPeriod] = useState<Period>('7');
   const [starting, setStarting] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -35,13 +29,6 @@ export function TripsTab({ device, isOwner }: TabProps) {
     queryFn: () => api<{ data: TripLog[] }>(`/devices/${device.id}/trip-logs`),
     refetchInterval: 30_000,
   });
-  const from = useMemo(() => new Date(Date.now() - Number(period) * 86_400_000).toISOString(), [period]);
-  const auto = useQuery({
-    queryKey: ['trips', device.id, period],
-    enabled: mode === 'auto',
-    queryFn: () => api<{ data: Trip[] }>(`/devices/${device.id}/trips?from=${encodeURIComponent(from)}`),
-  });
-
   async function startTrip() {
     setBusy(true);
     setError(null);
@@ -64,8 +51,8 @@ export function TripsTab({ device, isOwner }: TabProps) {
   return (
     <View style={{ flex: 1 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 8 }}>
-        <MiniTabs<Mode> value={mode} options={[['logged', 'My trips'], ['auto', 'Auto']]} onChange={setMode} />
-        {isOwner && mode === 'logged' && (
+        <Text style={{ fontFamily: fonts.body, fontSize: 12, color: c.textMuted }}>{list.length ? `${list.length} ${list.length === 1 ? 'trip' : 'trips'}` : ' '}</Text>
+        {isOwner && (
           <Pressable onPress={() => { setError(null); setStarting(true); }} accessibilityRole="button" accessibilityLabel="Start a new trip" style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' }}>
             <DIcon name="plus" size={20} strokeWidth={2.4} color="#FFFFFF" />
           </Pressable>
@@ -74,10 +61,9 @@ export function TripsTab({ device, isOwner }: TabProps) {
 
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24, gap: 4 }}
-        refreshControl={<RefreshControl refreshing={logs.isRefetching} onRefresh={() => { logs.refetch(); auto.refetch(); }} colors={[c.text]} />}
+        refreshControl={<RefreshControl refreshing={logs.isRefetching} onRefresh={() => { logs.refetch(); }} colors={[c.text]} />}
       >
-        {mode === 'logged' ? (
-          list.length === 0 ? (
+        {list.length === 0 ? (
             <Text style={[muted, { textAlign: 'center', paddingVertical: 32 }]}>
               {logs.isLoading ? 'Loading…' : isOwner ? 'No trips yet. Tap + to start one; the vehicle’s data is saved into it until you start the next.' : 'No trips yet.'}
             </Text>
@@ -89,7 +75,7 @@ export function TripsTab({ device, isOwner }: TabProps) {
                 onLongPress={isOwner ? () => setDeleting(t) : undefined}
                 accessibilityRole="button"
                 accessibilityLabel={`${t.name || `Trip ${t.number}`}, ${km(t.distanceKm)} kilometres`}
-                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 12, marginHorizontal: -12, borderRadius: 16, backgroundColor: pressed || t.current ? c.surface : 'transparent' })}
+                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 12, marginHorizontal: -12, borderRadius: 16, backgroundColor: pressed ? c.surface : 'transparent' })}
               >
                 <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -104,33 +90,8 @@ export function TripsTab({ device, isOwner }: TabProps) {
                 </View>
               </Pressable>
             ))
-          )
-        ) : (
-          <>
-            <View style={{ paddingBottom: 6 }}>
-              <MiniTabs<Period> value={period} options={[['1', '24 h'], ['7', '7 days'], ['30', '30 days']]} onChange={setPeriod} />
-            </View>
-            {(auto.data?.data ?? []).length === 0 ? (
-              <Text style={[muted, { textAlign: 'center', paddingVertical: 32 }]}>{auto.isLoading ? 'Loading…' : 'No automatic trips in this period.'}</Text>
-            ) : (
-              (auto.data?.data ?? []).map((t) => (
-                <Pressable
-                  key={t.id}
-                  onPress={() => router.push(`/trip/${t.id}?deviceId=${device.id}`)}
-                  accessibilityRole="button"
-                  style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 12, marginHorizontal: -12, borderRadius: 16, backgroundColor: pressed ? c.surface : 'transparent' })}
-                >
-                  <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                    <Text numberOfLines={1} style={{ fontFamily: fonts.bold, fontSize: 15, lineHeight: 20, color: c.text }}>{dateTime(t.startTime)}{t.endTime ? ` – ${timeOnly(t.endTime)}` : ''}</Text>
-                    <Text numberOfLines={1} style={muted}>{duration(t.durationS)} · max {t.maxSpeed} km/h{t.inProgress ? ' · driving now' : ''}</Text>
-                  </View>
-                  <Text style={{ fontFamily: fonts.bold, fontSize: 15, lineHeight: 20, color: c.text }}>{km(t.distanceKm)} km</Text>
-                </Pressable>
-              ))
-            )}
-          </>
-        )}
-        {mode === 'logged' && list.length > 0 && isOwner && <Text style={[muted, { textAlign: 'center', paddingTop: 12 }]}>Touch and hold a trip to delete it.</Text>}
+          )}
+        {list.length > 0 && isOwner && <Text style={[muted, { textAlign: 'center', paddingTop: 12 }]}>Touch and hold a trip to delete it.</Text>}
       </ScrollView>
 
       <Dialog
@@ -142,7 +103,19 @@ export function TripsTab({ device, isOwner }: TabProps) {
         onConfirm={startTrip}
         busy={busy}
       >
-        <Input label="Name (optional)" value={name} onChangeText={setName} placeholder={`Trip ${list.length + 1}`} maxLength={60} error={error ?? undefined} />
+        <View style={{ gap: 4 }}>
+          <Text style={{ fontFamily: fonts.medium, fontSize: 12, color: c.textMuted }}>Name (optional)</Text>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder={`Trip ${list.length + 1}`}
+            placeholderTextColor={c.textMuted}
+            maxLength={60}
+            autoFocus
+            style={{ fontFamily: fonts.medium, fontSize: 16, color: c.text, paddingVertical: 8, paddingHorizontal: 0, borderBottomWidth: 1.5, borderBottomColor: c.text }}
+          />
+          {error ? <Text style={{ fontFamily: fonts.body, fontSize: 12, color: c.danger }}>{error}</Text> : null}
+        </View>
       </Dialog>
 
       <ConfirmDialog

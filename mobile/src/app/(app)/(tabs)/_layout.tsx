@@ -58,7 +58,7 @@ export default function TabsLayout() {
       >
         <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: TabIcon('home'), tabBarLabel: TabLabel('Home') }} />
         <Tabs.Screen name="map" options={{ title: 'Map', tabBarIcon: TabIcon('map'), tabBarLabel: TabLabel('Map') }} />
-        <Tabs.Screen name="trips" options={{ title: 'Trips', tabBarIcon: TabIcon('trips'), tabBarLabel: TabLabel('Trips') }} />
+        <Tabs.Screen name="trips" options={{ title: 'Replay', tabBarIcon: TabIcon('trips'), tabBarLabel: TabLabel('Replay') }} />
         <Tabs.Screen name="account" options={{ title: 'Profile', tabBarIcon: TabIcon('user'), tabBarLabel: TabLabel('Profile') }} />
       </Tabs>
     </TrackersProvider>

@@ -11,11 +11,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, errorText } from '@/api/client';
 import { plateOrName, type Driver } from '@/api/types';
 import { useDrivers } from '@/lib/drivers';
-import { dueText, longDate, rupees, serviceType, useService } from '@/lib/service';
+import { daysUntil, dueText, longDate, rupees, serviceType, useService } from '@/lib/service';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import { shortAddress, useAddress } from '@/lib/address';
 import { timeAgo, timeOnly } from '@/lib/format';
-import { shareLiveLocation } from '@/lib/share';
+import { shareCurrentLocation, shareLiveLocation } from '@/lib/share';
 import { STATUS_LABEL, statusGroup } from '@/lib/vehicleStatus';
 import { AppMap } from '@/components/Map';
 import { PillButton, Plate, RoundButton, Stat, StatusDot, TopBar, UnderlineTabs, VehicleTile, accentTint } from '@/components/kit';
@@ -40,6 +40,7 @@ export function Overview({ device, state, isOwner }: TabProps) {
   const params = useLocalSearchParams<{ section?: Section; from?: string }>();
   const [section, setSection] = useState<Section>(params.section ?? 'driver');
   const [big, setBig] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const g = statusGroup(state);
   const hasPos = state.lat != null && state.lon != null;
   const { address, isLoading: addrLoading } = useAddress(state.lat, state.lon);
@@ -151,7 +152,7 @@ export function Overview({ device, state, isOwner }: TabProps) {
                 <MoreTile icon="notifications-outline" label="Alerts" onPress={() => open('alerts')} />
                 <MoreTile icon="shapes-outline" label="Geofences" onPress={() => open('geofences')} />
                 {isOwner && <MoreTile icon="people-outline" label="Share with family" onPress={() => open('sharing')} />}
-                {isOwner && <MoreTile icon="share-social-outline" label="Share live" onPress={() => shareLiveLocation(device).catch(() => {})} />}
+                <MoreTile icon="share-social-outline" label="Share" onPress={() => setShareOpen(true)} />
                 <MoreTile
                   icon="navigate-outline"
                   label="Navigate"
@@ -164,6 +165,24 @@ export function Overview({ device, state, isOwner }: TabProps) {
           </>
         )}
       </ScrollView>
+
+      {/* Share: choose Live or Current, then the phone's share sheet (WhatsApp, etc.) */}
+      <DesignSheet visible={shareOpen} onClose={() => setShareOpen(false)} title="Share location">
+        <ShareChoice
+          icon="radio-outline"
+          title="Live location"
+          text="A link that follows the vehicle for 1 hour"
+          disabled={!isOwner}
+          onPress={() => { setShareOpen(false); shareLiveLocation(device).catch(() => {}); }}
+        />
+        <ShareChoice
+          icon="location-outline"
+          title="Current location"
+          text={hasPos ? 'Where it is right now (a map link)' : 'No GPS position yet'}
+          disabled={!hasPos}
+          onPress={() => { setShareOpen(false); shareCurrentLocation(device, state.lat!, state.lon!).catch(() => {}); }}
+        />
+      </DesignSheet>
       <BottomNav active={params.from === 'map' ? 'map' : 'home'} />
     </SafeAreaView>
   );
@@ -366,7 +385,7 @@ function DriverCard({ role, driver, canEdit, onAdd, onChange }: {
   }
   // The card itself does nothing when tapped (avoids accidental opens); only the call and edit buttons act.
   return (
-    <View style={[styles.driverCard, { backgroundColor: c.surface }]}>
+    <View style={styles.driverCard}>
       <DriverAvatar driver={driver} size={48} />
       <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
         <Text style={[type.caption, { color: role === 'MAIN' ? c.accent : c.textMuted, fontFamily: type.fieldLabel.fontFamily }]}>{role}</Text>
@@ -384,7 +403,7 @@ function DriverCard({ role, driver, canEdit, onAdd, onChange }: {
         </Pressable>
       ) : null}
       {canEdit && (
-        <Pressable onPress={onChange} accessibilityRole="button" accessibilityLabel={`Change ${role.toLowerCase()} driver`} style={[styles.editCircle, { backgroundColor: c.dark ? c.surface2 : '#FFFFFF' }]}>
+        <Pressable onPress={onChange} accessibilityRole="button" accessibilityLabel={`Change ${role.toLowerCase()} driver`} style={[styles.editCircle, { backgroundColor: c.surface }]}>
           <DIcon name="edit" size={18} strokeWidth={2} />
         </Pressable>
       )}
@@ -397,68 +416,113 @@ function ServiceSection({ deviceId, canEdit }: { deviceId: string; canEdit: bool
   const { data, isLoading } = useService(deviceId);
   const records = data?.data ?? [];
   const next = data?.next ?? null;
+  const [picked, setPicked] = useState<string | null>(null);
   const add = () => router.push(`/service/edit?deviceId=${deviceId}`);
-  const open = (id: string) => canEdit && router.push(`/service/edit?deviceId=${deviceId}&id=${id}`);
-  const card = { backgroundColor: c.surface };
+  const edit = (id: string) => router.push(`/service/edit?deviceId=${deviceId}&id=${id}`);
+  const muted = { fontFamily: fonts.body, fontSize: 12, lineHeight: 16, color: c.textMuted } as const;
 
-  if (isLoading) return <View style={[styles.svcCard, card]}><Text style={[type.small, { color: c.textMuted }]}>Loading…</Text></View>;
-  if (!records.length) {
-    return (
-      <View style={{ gap: 8 }}>
-        <View style={[styles.svcCard, card, { alignItems: 'center', paddingVertical: 16 }]}>
-          <Text style={[type.name, { color: c.text }]}>No service records yet</Text>
-          <Text style={[type.small, { color: c.textMuted, textAlign: 'center' }]}>Keep the history here and get a reminder before the next one.</Text>
-        </View>
-        {canEdit && <PillButton title="Add service record" icon="add" variant="dark" onPress={add} style={{ minHeight: 44 }} />}
-      </View>
-    );
-  }
+  if (isLoading) return <Text style={[muted, { textAlign: 'center', paddingVertical: 24 }]}>Loading…</Text>;
 
-  const [latest, ...older] = records;
-  const t = serviceType(latest.type);
-  const late = next && next.daysLeft < 0;
+  const selected = records.find((r) => r.id === picked) ?? records[0] ?? null;
+  const t = selected ? serviceType(selected.type) : null;
+  // This record's own next date, or else the vehicle's next service overall.
+  const dueDate = selected?.nextDueDate ?? next?.date ?? null;
+  const days = dueDate ? daysUntil(dueDate) : null;
+  const late = days != null && days < 0;
+  const progress = dueDate && next && dueDate === next.date ? next.progress : null;
+
   return (
-    <View style={{ gap: 8 }}>
-      <Pressable disabled={!canEdit} onPress={() => open(latest.id)} style={[styles.svcCard, card]}>
-        <View style={styles.row6}>
-          <View style={[styles.tileIcon, { backgroundColor: accentTint, width: 36, height: 36, borderRadius: 18 }]}>
-            <Ionicons name={t.icon} size={17} color={c.accent} />
-          </View>
-          <View style={{ flex: 1, minWidth: 0, marginLeft: 4 }}>
-            <Text numberOfLines={1} style={[type.name, { color: c.text }]}>{t.label}</Text>
-            <Text numberOfLines={1} style={[type.small, { color: c.textMuted, fontSize: 12, lineHeight: 16 }]}>{[longDate(latest.date), latest.garage].filter(Boolean).join(' · ')}</Text>
-          </View>
-          {latest.odometerKm != null && <Text style={[type.bodyStrong, { color: c.text, fontSize: 14 }]}>{latest.odometerKm.toLocaleString('en-IN')} km</Text>}
-          {latest.cost != null && <Text style={[type.bodyStrong, { color: c.text, fontSize: 14 }]}>{rupees(latest.cost)}</Text>}
-        </View>
-        {next && (
-          <View style={{ gap: 5 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={[type.small, { color: c.textMuted, fontSize: 12 }]}>Next service · {longDate(next.date)}</Text>
-              <Text style={[type.small, { color: late ? c.danger : c.text, fontSize: 12, fontFamily: type.fieldLabel.fontFamily }]}>{dueText(next.daysLeft)}</Text>
-            </View>
-            <View style={[styles.bar, { backgroundColor: c.dark ? c.surface2 : '#EDEDED' }]}>
-              <View style={[styles.barFill, { width: `${Math.round(next.progress * 100)}%`, backgroundColor: late ? c.danger : c.accent }]} />
-            </View>
-          </View>
-        )}
-      </Pressable>
-
-      {older.length > 0 && (
+    <View style={{ gap: 12 }}>
+      {/* One tag per service record; tap a tag to see it */}
+      {records.length > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-          {older.map((r) => {
-            const ot = serviceType(r.type);
+          {records.map((r) => {
+            const on = r.id === selected?.id;
             return (
-              <Pressable key={r.id} disabled={!canEdit} onPress={() => open(r.id)} style={[styles.oldChip, { backgroundColor: c.surface }]}>
-                <Text style={{ fontFamily: fonts.bold, fontSize: 12, color: c.text }}>{ot.label}</Text>
-                <Text style={{ fontFamily: fonts.body, fontSize: 12, color: c.textMuted }}>{longDate(r.date)}</Text>
+              <Pressable
+                key={r.id}
+                onPress={() => setPicked(r.id)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: on }}
+                style={{ height: 32, paddingHorizontal: 12, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: on ? (c.dark ? c.text : '#202020') : c.surface }}
+              >
+                <Text style={{ fontFamily: fonts.bold, fontSize: 12, color: on ? (c.dark ? c.bg : '#FFFFFF') : c.text }}>{serviceType(r.type).label}</Text>
+                <Text style={{ fontFamily: fonts.body, fontSize: 11, color: on ? (c.dark ? c.bg : '#FFFFFF') : c.textMuted }}>{longDate(r.date)}</Text>
               </Pressable>
             );
           })}
         </ScrollView>
       )}
 
-      {canEdit && <PillButton title="Add service record" icon="add" variant="dark" onPress={add} style={{ minHeight: 44 }} />}
+      {selected && t ? (
+        <View style={[styles.svcCard, { backgroundColor: c.surface }]}>
+          <View style={styles.row6}>
+            <View style={[styles.tileIcon, { backgroundColor: c.dark ? c.surface2 : '#FFFFFF', width: 36, height: 36, borderRadius: 18 }]}>
+              <Ionicons name={t.icon} size={17} color={c.accent} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0, marginLeft: 4 }}>
+              <Text numberOfLines={1} style={[type.name, { color: c.text }]}>{t.label}</Text>
+              <Text numberOfLines={1} style={muted}>{[longDate(selected.date), selected.garage].filter(Boolean).join(' · ')}</Text>
+            </View>
+            {canEdit && (
+              <Pressable onPress={() => edit(selected.id)} accessibilityRole="button" accessibilityLabel="Edit this service record" hitSlop={8} style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+                <DIcon name="edit" size={16} strokeWidth={2} />
+              </Pressable>
+            )}
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 16 }}>
+            {selected.odometerKm != null && <Detail label="Odometer" value={`${selected.odometerKm.toLocaleString('en-IN')} km`} />}
+            {selected.cost != null && <Detail label="Cost" value={rupees(selected.cost)} />}
+          </View>
+          {selected.notes ? <Text style={[muted, { fontSize: 13, lineHeight: 18, color: c.text }]}>{selected.notes}</Text> : null}
+
+          {/* Next service due */}
+          <View style={{ gap: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border, paddingTop: 10 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <Text style={muted}>Next service due</Text>
+              <Text style={{ fontFamily: fonts.bold, fontSize: 13, color: late ? c.danger : c.text }}>
+                {dueDate ? `${longDate(dueDate)} · ${dueText(days!)}` : 'Not set'}
+              </Text>
+            </View>
+            {progress != null && (
+              <View style={[styles.bar, { backgroundColor: c.dark ? c.surface2 : '#EDEDED' }]}>
+                <View style={[styles.barFill, { width: `${Math.round(progress * 100)}%`, backgroundColor: late ? c.danger : c.accent }]} />
+              </View>
+            )}
+          </View>
+        </View>
+      ) : (
+        <Text style={[muted, { textAlign: 'center', paddingVertical: 20 }]}>No service records yet. Keep the history here and get a reminder before the next one.</Text>
+      )}
+
+      {canEdit && <PillButton title="Add service record" icon="add" variant="dark" onPress={add} style={{ minHeight: 46 }} />}
+    </View>
+  );
+}
+
+function ShareChoice({ icon, title, text, onPress, disabled }: { icon: IconName; title: string; text: string; onPress: () => void; disabled?: boolean }) {
+  const c = useColors();
+  return (
+    <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 60, opacity: disabled ? 0.4 : pressed ? 0.7 : 1 })}>
+      <View style={[styles.tileIcon, { backgroundColor: accentTint, width: 44, height: 44, borderRadius: 22 }]}>
+        <Ionicons name={icon} size={20} color={c.accent} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontFamily: fonts.bold, fontSize: 16, color: c.text }}>{title}</Text>
+        <Text style={{ fontFamily: fonts.body, fontSize: 13, color: c.textMuted }}>{text}</Text>
+      </View>
+      <DIcon name="chevR" size={18} strokeWidth={2.2} color={c.textMuted} />
+    </Pressable>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  const c = useColors();
+  return (
+    <View style={{ gap: 1 }}>
+      <Text style={{ fontFamily: fonts.bold, fontSize: 15, color: c.text }}>{value}</Text>
+      <Text style={{ fontFamily: fonts.body, fontSize: 11, color: c.textMuted }}>{label}</Text>
     </View>
   );
 }
@@ -521,7 +585,6 @@ const styles = StyleSheet.create({
   editBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   editCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   svcCard: { padding: 12, borderRadius: 20, gap: 10 },
-  oldChip: { height: 34, borderRadius: 17, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 6 },
   bar: { height: 6, borderRadius: 3, overflow: 'hidden' },
   barFill: { height: 6, borderRadius: 3 },
 });

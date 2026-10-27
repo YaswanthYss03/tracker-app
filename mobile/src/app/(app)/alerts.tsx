@@ -2,7 +2,7 @@
 // Type chips filter the list; new alerts (since the last visit) have a dot.
 // Leaving the screen, or ✓✓, marks everything as read.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,10 +11,12 @@ import * as SecureStore from 'expo-secure-store';
 import { errorText } from '@/api/client';
 import { useAlertsFeed, useMarkAlertsSeen, type FeedItem } from '@/lib/alertsSeen';
 import { ALERT_ICONS, alertText, timeAgo } from '@/lib/format';
-import { Chip, Plate, RoundButton, TopBar } from '@/components/kit';
+import { Plate, RoundButton, TopBar } from '@/components/kit';
+import { MiniTabs } from '@/components/MiniTabs';
+import { groupByDay } from '@/lib/alertGroups';
 import { EmptyState, ErrorBox } from '@/components/ui';
 import { SkeletonRows } from '@/components/effects';
-import { radius, shadow, space, type, useColors, type Palette } from '@/theme';
+import { fonts, space, type, useColors, type Palette } from '@/theme';
 
 type Kind = 'all' | 'offline' | 'long_stop' | 'gps_lost' | 'warning';
 const KIND_OF: Record<string, Kind> = {
@@ -70,23 +72,28 @@ export default function AlertsFeed() {
           </View>
         }
       />
-      <View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm, paddingHorizontal: space.lg, paddingVertical: space.xs }}>
-          {CHIPS.filter((ch) => ch.kind === 'all' || counts[ch.kind] > 0).map((ch) => (
-            <Chip key={ch.kind} icon={ch.icon} label={String(counts[ch.kind])} selected={kind === ch.kind} onPress={() => setKind(ch.kind)} />
-          ))}
-        </ScrollView>
+      <View style={{ paddingVertical: 8 }}>
+        <MiniTabs<Kind>
+          scroll
+          value={kind}
+          options={CHIPS.filter((ch) => ch.kind === 'all' || counts[ch.kind] > 0).map((ch) => [ch.kind, `${ch.label} ${counts[ch.kind]}`] as [Kind, string])}
+          onChange={setKind}
+        />
       </View>
       <ErrorBox error={error ? errorText(error) : null} />
       {isLoading ? (
         <SkeletonRows count={5} style={{ padding: space.lg }} />
       ) : (
-        <FlatList
-          data={shown}
+        <SectionList
+          sections={groupByDay(shown)}
           keyExtractor={(e) => e.id}
-          contentContainerStyle={{ padding: space.lg, paddingTop: space.sm, gap: space.sm, flexGrow: 1 }}
-          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => { refetch(); }} />}
+          stickySectionHeadersEnabled={false}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24, flexGrow: 1 }}
+          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => { refetch(); }} colors={[c.text]} />}
           ListEmptyComponent={<EmptyState icon="notifications-off-outline" title="All quiet" text="No alerts in the last 7 days." />}
+          renderSectionHeader={({ section }) => (
+            <Text style={{ fontFamily: fonts.bold, fontSize: 12, letterSpacing: 0.6, color: c.textMuted, paddingTop: 14, paddingBottom: 2 }}>{section.title.toUpperCase()}</Text>
+          )}
           renderItem={({ item }) => {
             const t = tone(item.type, c);
             return (
@@ -94,19 +101,19 @@ export default function AlertsFeed() {
                 onPress={() => router.push(`/device/${item.deviceId}`)}
                 accessibilityRole="button"
                 accessibilityLabel={`${alertText(item)}, ${item.deviceName}, ${timeAgo(item.time)}${isNew(item) ? ', new' : ''}`}
-                style={({ pressed }) => [styles.row, { backgroundColor: c.surface, opacity: pressed ? 0.9 : 1 }, shadow.card]}
+                style={({ pressed }) => [styles.row, { borderBottomColor: c.border, opacity: pressed ? 0.7 : 1 }]}
               >
                 <View style={[styles.icon, { backgroundColor: t.bg }]}>
-                  <Ionicons name={(ALERT_ICONS[item.type] || 'notifications-outline') as keyof typeof Ionicons.glyphMap} size={20} color={t.fg} />
+                  <Ionicons name={(ALERT_ICONS[item.type] || 'notifications-outline') as keyof typeof Ionicons.glyphMap} size={16} color={t.fg} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                  <Text numberOfLines={1} style={[type.name, { color: c.text, fontSize: 15 }]}>{alertText(item)}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.bold, fontSize: 14, lineHeight: 19, color: c.text }}>{alertText(item)}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <Plate value={item.deviceName} size={12} color={c.textMuted} />
-                    <Text style={[type.caption, { color: c.textMuted, letterSpacing: 0 }]}>· {timeAgo(item.time)}</Text>
+                    <Text style={{ fontFamily: fonts.body, fontSize: 12, color: c.textMuted }}>· {new Date(item.time).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</Text>
                   </View>
                 </View>
-                {isNew(item) && <View style={[styles.dot, { backgroundColor: c.danger }]} accessibilityElementsHidden />}
+                {isNew(item) && <View style={[styles.dot, { backgroundColor: c.accent }]} accessibilityElementsHidden />}
               </Pressable>
             );
           }}
@@ -117,7 +124,7 @@ export default function AlertsFeed() {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.card },
-  icon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  icon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   dot: { width: 9, height: 9, borderRadius: 5 },
 });

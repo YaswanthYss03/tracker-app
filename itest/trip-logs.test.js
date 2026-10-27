@@ -39,6 +39,7 @@ test('data belongs to the latest trip; starting a new one splits it; delete merg
   assert.equal(first.current, true);
   const second = (await api('POST', url, { token: t, body: {} })).body.data;
   assert.equal(second.number, 2);
+  assert.equal(second.name, 'Trip 2'); // default name when none is given
   const now = Date.now();
   await ctx.prisma.tripLog.update({ where: { id: first.id }, data: { startedAt: new Date(now - 3 * 3600_000) } });
   await ctx.prisma.tripLog.update({ where: { id: second.id }, data: { startedAt: new Date(now - 3600_000) } });

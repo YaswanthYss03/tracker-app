@@ -13,7 +13,7 @@ export type NavTab = 'home' | 'map' | 'trips' | 'profile';
 const TABS: { key: NavTab; label: string; icon: DesignIconName; path: '/' | '/map' | '/trips' | '/account' }[] = [
   { key: 'home', label: 'Home', icon: 'home', path: '/' },
   { key: 'map', label: 'Map', icon: 'map', path: '/map' },
-  { key: 'trips', label: 'Trips', icon: 'trips', path: '/trips' },
+  { key: 'trips', label: 'Replay', icon: 'trips', path: '/trips' },
   { key: 'profile', label: 'Profile', icon: 'user', path: '/account' },
 ];
 

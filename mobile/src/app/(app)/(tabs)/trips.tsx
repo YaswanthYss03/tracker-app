@@ -185,7 +185,7 @@ export default function Trips() {
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={styles.header}>
-        <Text style={[type.h1, { color: c.text }]}>Trips</Text>
+        <Text style={[type.h1, { color: c.text }]}>Replay</Text>
         <Chip label="Compare" icon="git-compare-outline" selected={compare} onPress={() => setCompareMode(!compare)} />
       </View>
       <ScrollView

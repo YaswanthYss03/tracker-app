@@ -11,7 +11,7 @@ export function AlertRow({ alert, subtitle, onPress }: { alert: AlertEvent; subt
   return (
     <Pressable
       onPress={onPress || (alert.lat != null ? () => Linking.openURL(`https://www.google.com/maps?q=${alert.lat},${alert.lon}`) : undefined)}
-      style={[styles.row, { backgroundColor: c.surface, borderColor: c.border }]}
+      style={[styles.row, { borderBottomColor: c.border }]}
     >
       <View style={[styles.icon, { backgroundColor: severe ? c.dangerSoft : c.surface2 }]}>
         <Ionicons name={(ALERT_ICONS[alert.type] || 'notifications') as any} size={16} color={severe ? c.danger : c.text} />
@@ -26,6 +26,6 @@ export function AlertRow({ alert, subtitle, onPress }: { alert: AlertEvent; subt
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 14, borderWidth: 0 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   icon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
 });

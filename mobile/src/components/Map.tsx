@@ -28,8 +28,8 @@ export type MapMarker = LatLon & {
   dot?: string;
 };
 export type MapDot = LatLon & { id: string; color: string };
-export type MapCircle = LatLon & { id: string; radiusM: number; draft?: boolean };
-export type MapPolygon = { id: string; points: [number, number][] };
+export type MapCircle = LatLon & { id: string; radiusM: number; draft?: boolean; color?: string };
+export type MapPolygon = { id: string; points: [number, number][]; color?: string };
 /** Extra coloured lines (e.g. several vehicles' routes when comparing). */
 export type MapRoute = { id: string; color: string; points: LatLon[] };
 
@@ -317,8 +317,8 @@ function apply(s) {
   syncDots(s.dots || []);
   map.getSource('routes').setData(fc((s.routes || []).filter((r) => r.points.length > 1).map((r) => ({ type: 'Feature', properties: { color: r.color }, geometry: { type: 'LineString', coordinates: r.points.map((p) => [p.lon, p.lat]) } }))));
   map.getSource('route').setData(fc((s.route || []).length > 1 ? [{ type: 'Feature', geometry: { type: 'LineString', coordinates: s.route.map((p) => [p.lon, p.lat]) } }] : []));
-  const fence = (c) => ({ type: 'Feature', properties: { draft: !!c.draft }, geometry: { type: 'Polygon', coordinates: [circlePolygon(c.lat, c.lon, c.radiusM)] } });
-  const polys = (s.polygons || []).map((p) => ({ type: 'Feature', properties: { draft: false }, geometry: { type: 'Polygon', coordinates: [[...p.points.map(([la, lo]) => [lo, la]), [p.points[0][1], p.points[0][0]]]] } }));
+  const fence = (c) => ({ type: 'Feature', properties: { draft: !!c.draft, color: c.color || '' }, geometry: { type: 'Polygon', coordinates: [circlePolygon(c.lat, c.lon, c.radiusM)] } });
+  const polys = (s.polygons || []).map((p) => ({ type: 'Feature', properties: { draft: false, color: p.color || '' }, geometry: { type: 'Polygon', coordinates: [[...p.points.map(([la, lo]) => [lo, la]), [p.points[0][1], p.points[0][0]]]] } }));
   map.getSource('fences').setData(fc([...(s.circles || []).map(fence), ...polys]));
   longPressOn = !!s.longPress;
 
@@ -350,9 +350,9 @@ map.on('load', () => {
   map.addSource('route', { type: 'geojson', data: fc([]) });
   map.addLayer({ id: 'route', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '${routeColor}', 'line-width': 5 } });
   map.addSource('fences', { type: 'geojson', data: fc([]) });
-  map.addLayer({ id: 'fences-fill', type: 'fill', source: 'fences', paint: { 'fill-color': '${brand.marigold}', 'fill-opacity': ['case', ['get', 'draft'], 0.28, 0.16] } });
-  map.addLayer({ id: 'fences-line', type: 'line', source: 'fences', filter: ['!', ['get', 'draft']], paint: { 'line-color': '${dark ? '#E9EDF1' : brand.aubergine}', 'line-width': 2 } });
-  map.addLayer({ id: 'draft-line', type: 'line', source: 'fences', filter: ['get', 'draft'], paint: { 'line-color': '${brand.marigold}', 'line-width': 3, 'line-dasharray': [2, 2] } });
+  map.addLayer({ id: 'fences-fill', type: 'fill', source: 'fences', paint: { 'fill-color': ['case', ['==', ['get', 'color'], ''], '${brand.marigold}', ['get', 'color']], 'fill-opacity': ['case', ['get', 'draft'], 0.3, 0.22] } });
+  map.addLayer({ id: 'fences-line', type: 'line', source: 'fences', filter: ['!', ['get', 'draft']], paint: { 'line-color': ['case', ['==', ['get', 'color'], ''], '${dark ? '#E9EDF1' : brand.aubergine}', ['get', 'color']], 'line-width': 2.5 } });
+  map.addLayer({ id: 'draft-line', type: 'line', source: 'fences', filter: ['get', 'draft'], paint: { 'line-color': ['case', ['==', ['get', 'color'], ''], '${brand.marigold}', ['get', 'color']], 'line-width': 3, 'line-dasharray': [2, 2] } });
   ready = true;
   if (pending) apply(pending);
   post({ type: 'ready' });

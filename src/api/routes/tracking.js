@@ -151,8 +151,10 @@ function createTrackingRouter({ ownership, registry, processors, hooks, config, 
 
   router.post('/:deviceId/trip-logs', owner, wrap(async (req, res) => {
     const { name } = parse(z.object({ name: z.string().trim().max(60).optional() }), req.body ?? {});
-    const log = await tripLogsRepo.create(req.device.id, { name, createdBy: req.user.id });
-    const total = (await tripLogsRepo.list(req.device.id)).length;
+    // No name given: "Trip 1", "Trip 2", ... in the order they were started.
+    const before = (await tripLogsRepo.list(req.device.id)).length;
+    const log = await tripLogsRepo.create(req.device.id, { name: name || `Trip ${before + 1}`, createdBy: req.user.id });
+    const total = before + 1;
     res.status(201).json({ data: tripLogDto(log, { number: total, endedAt: null, stats: tripLogsRepo.statsFrom([]) }) });
   }));
 
