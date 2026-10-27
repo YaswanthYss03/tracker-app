@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BottomNav } from '@/components/BottomNav';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -73,7 +74,7 @@ export function Overview({ device, state, isOwner }: TabProps) {
           <VehicleTile type={device.icon} color={device.color} width={88} height={62} dimmed={g === 'offline'} style={{ borderRadius: 18 }} />
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             {g === 'offline' ? (
-              <Text style={{ fontFamily: fonts.bold, fontSize: 18, lineHeight: 22, color: c.textMuted }}>Offline</Text>
+              <Text style={{ fontFamily: fonts.bold, fontSize: 14, lineHeight: 20, color: c.textMuted }}>Offline</Text>
             ) : (
               <Text maxFontSizeMultiplier={1.2}>
                 <Text style={{ fontFamily: fonts.bold, fontSize: 36, lineHeight: 40, letterSpacing: -1, color: c.text }}>{state.speed ?? 0}</Text>
@@ -82,7 +83,7 @@ export function Overview({ device, state, isOwner }: TabProps) {
             )}
             <View style={styles.row6}>
               <StatusDot group={g} />
-              <Text numberOfLines={1} style={[type.small, { color: g === 'moving' ? c.success : c.textMuted, flexShrink: 1 }]}>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.body, fontSize: 11, lineHeight: 15, color: g === 'moving' ? c.success : c.textMuted, flexShrink: 1 }}>
                 {state.lastSeenAt ? `${STATUS_LABEL[g]} · ${timeAgo(state.lastSeenAt)}` : 'Never connected'}
               </Text>
             </View>
@@ -158,6 +159,7 @@ export function Overview({ device, state, isOwner }: TabProps) {
         )}
 
       </ScrollView>
+      <BottomNav active="home" />
     </SafeAreaView>
   );
 }
