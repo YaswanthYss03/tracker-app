@@ -19,3 +19,17 @@ export function useAddress(lat?: number | null, lon?: number | null) {
   });
   return { address: q.data?.data.address ?? null, isLoading: has && q.isLoading };
 }
+
+/**
+ * Fit "Road, near Area" on one line (about `max` characters): keep both if they
+ * fit, else just the road, else the road cut at a word with "…".
+ */
+export function shortAddress(address: string, max = 36) {
+  const a = address.replace(/\s+/g, ' ').trim();
+  if (a.length <= max) return a;
+  const road = a.split(', near ')[0].split(',')[0].trim();
+  if (road.length <= max) return road;
+  const cut = road.slice(0, max - 1);
+  const sp = cut.lastIndexOf(' ');
+  return `${(sp > max * 0.5 ? cut.slice(0, sp) : cut).replace(/[\s,-]+$/, '')}…`;
+}

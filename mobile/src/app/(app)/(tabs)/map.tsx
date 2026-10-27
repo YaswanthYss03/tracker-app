@@ -8,7 +8,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router';
 import { plateOrName } from '@/api/types';
 import { useTrackers } from '@/live/TrackersProvider';
-import { useAddress } from '@/lib/address';
+import { shortAddress, useAddress } from '@/lib/address';
 import { usePref } from '@/lib/prefs';
 import { STATUS_DASHED, STATUS_LABEL, STATUS_ORDER as ORDER, STATUS_RING, statusGroup, type StatusGroup } from '@/lib/vehicleStatus';
 import { selectVehicle, useSelectedVehicle } from '@/lib/selectedVehicle';
@@ -77,7 +77,7 @@ export default function MapTab() {
   const hasSpeed = g === 'moving' || g === 'stopped';
   const addressText = !selPos
     ? 'No GPS position yet'
-    : address ?? (addrLoading ? 'Finding address…' : `${selPos.lat.toFixed(5)}, ${selPos.lon.toFixed(5)}`);
+    : address ? shortAddress(address) : (addrLoading ? 'Finding address…' : `${selPos.lat.toFixed(5)}, ${selPos.lon.toFixed(5)}`);
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
