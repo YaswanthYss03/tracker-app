@@ -134,7 +134,7 @@ export default function MapTab() {
         </ScrollView>
 
         <View style={styles.vehicle}>
-          <VehicleTile type={sel.d.icon} color={sel.d.color} width={74} height={52} dimmed={g === 'offline'} style={{ borderRadius: 16 }} />
+          <VehicleTile type={sel.d.icon} color={sel.d.color} width={74} height={52} dimmed={g === 'offline'} deep style={{ borderRadius: 16 }} />
           <Text numberOfLines={1} maxFontSizeMultiplier={1.2} style={{ flex: 1, minWidth: 0, fontFamily: fonts.mono, fontSize: 17, color: c.text }}>{plateOrName(sel.d)}</Text>
           <Text maxFontSizeMultiplier={1.2} numberOfLines={1}>
             <Text style={hasSpeed
@@ -148,7 +148,7 @@ export default function MapTab() {
 
         <View style={styles.address}>
           <DIcon name="pin" size={16} strokeWidth={2} color={c.textMuted} />
-          <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.body, fontSize: 14, color: selPos ? (c.dark ? c.text : '#3A3A3A') : c.textMuted }}>{addressText}</Text>
+          <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: selPos ? (c.dark ? c.text : '#3A3A3A') : c.textMuted }}>{addressText}</Text>
         </View>
 
         <View style={styles.nav}>
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
   chip: { height: 38, paddingHorizontal: 13, borderRadius: 19, flexDirection: 'row', alignItems: 'center', gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   vehicle: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18 },
-  address: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18 },
+  address: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18, minHeight: 20, overflow: 'hidden' },
   nav: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18 },
   round: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
   details: { flex: 1, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },

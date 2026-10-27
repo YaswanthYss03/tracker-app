@@ -33,7 +33,7 @@ const CHIPS: { kind: Kind; icon: keyof typeof Ionicons.glyphMap; label: string }
 function tone(type: string, c: Palette) {
   if (type === 'online' || type === 'ignition_on') return { bg: c.successSoft, fg: c.success };
   if (KIND_OF[type] === 'warning') return { bg: c.dangerSoft, fg: c.danger };
-  if (type === 'long_stop' || type === 'gps_lost') return { bg: 'rgba(234,170,0,0.22)', fg: c.text };
+  if (type === 'long_stop' || type === 'gps_lost') return { bg: '#FBEBD0', fg: '#7F4A00' };
   return { bg: c.surface2, fg: c.text };
 }
 

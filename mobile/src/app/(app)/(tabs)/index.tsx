@@ -329,7 +329,7 @@ function VehicleRow({ row: { d, s, g }, selected, dueDays, onPress, onDriver }: 
                 {d.mainDriver ? (
                   <DriverAvatar driver={d.mainDriver} size={20} />
                 ) : (
-                  <View style={[styles.avatar, { backgroundColor: c.dark ? c.surface2 : 'rgba(234,170,0,0.25)' }]}>
+                  <View style={[styles.avatar, { backgroundColor: c.dark ? c.surface2 : '#FBE4E4' }]}>
                     <Text style={{ fontSize: 11, fontFamily: fonts.bold, color: c.text }}>{driver.charAt(0).toUpperCase()}</Text>
                   </View>
                 )}

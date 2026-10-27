@@ -52,7 +52,7 @@ export default function Partner() {
   return (
     <Screen>
       <IconButton icon="arrow-back" label="Back" onPress={() => router.back()} />
-      <GradientSweep colors={[brand.aubergine, '#5A1D50']} duration={5000} style={styles.hero}>
+      <GradientSweep colors={[brand.aubergine, '#3A3A3A']} duration={5000} style={styles.hero}>
         <AppText variant="h1" color="#FFFFFF">Partner with us</AppText>
         <AppText color="#F2E6F0">Grow your business with Pavakie GPS trackers.</AppText>
         <View style={{ gap: space.sm, marginTop: space.sm }}>

@@ -23,7 +23,7 @@ import { colorOf } from '@/lib/vehicleColors';
 type IconName = keyof typeof Ionicons.glyphMap;
 const tap = () => Haptics.selectionAsync().catch(() => {});
 /** Soft marigold tint used for selected / highlighted backgrounds. */
-export const accentTint = 'rgba(234,170,0,0.22)';
+export const accentTint = 'rgba(217,54,54,0.13)';
 
 // ---------- Top bar ----------
 
@@ -244,8 +244,10 @@ const TINT: Record<string, string> = {
 };
 
 /** Vehicle picture on a soft tinted tile. */
-export function VehicleTile({ type: kind, width = 76, height = 62, dimmed, color, style }: {
+export function VehicleTile({ type: kind, width = 76, height = 62, dimmed, deep, color, style }: {
   type?: string | null; width?: ViewStyle['width']; height?: number; dimmed?: boolean;
+  /** Stronger tile and a bigger picture, for the Map sheet. */
+  deep?: boolean;
   /** Body colour key: tints the tile in that colour. */
   color?: string | null;
   style?: StyleProp<ViewStyle>;
@@ -254,7 +256,8 @@ export function VehicleTile({ type: kind, width = 76, height = 62, dimmed, color
   const bg = c.dark ? c.surface2 : colorOf(color)?.tint ?? TINT[kind ?? 'other'] ?? TINT.other;
   return (
     <View style={[{ width, height, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: bg }, style]}>
-      <VehicleArt type={kind} size={Math.round(height * 0.8)} dimmed={dimmed} />
+      {deep && !c.dark ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.07)' }]} /> : null}
+      <VehicleArt type={kind} size={Math.round(height * (deep ? 0.92 : 0.8))} dimmed={dimmed} />
     </View>
   );
 }

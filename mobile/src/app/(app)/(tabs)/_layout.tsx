@@ -17,8 +17,8 @@ function TabIcon(name: DesignIconName) {
 function PillIcon({ name, focused }: { name: DesignIconName; focused: boolean }) {
   const c = useColors();
   return (
-    <View style={{ width: 60, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: focused ? (c.dark ? 'rgba(234,170,0,0.22)' : '#FBE4E4') : 'transparent' }}>
-      <DIcon name={name} size={24} strokeWidth={1.9} color={focused ? c.accent : c.textMuted} />
+    <View style={{ width: 60, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: focused ? (c.dark ? 'rgba(229,72,77,0.25)' : '#FBE4E4') : 'transparent' }}>
+      <DIcon name={name} size={24} strokeWidth={focused ? 2.1 : 1.9} color={focused ? c.accent : c.text} />
     </View>
   );
 }
@@ -30,7 +30,7 @@ function TabLabel(title: string) {
 function Label({ title, focused }: { title: string; focused: boolean }) {
   const c = useColors();
   return (
-    <Text maxFontSizeMultiplier={1.2} style={{ fontFamily: focused ? fonts.bold : fonts.medium, fontSize: 12, lineHeight: 14, marginTop: 4, color: focused ? c.text : c.textMuted }}>
+    <Text maxFontSizeMultiplier={1.2} style={{ fontFamily: focused ? fonts.bold : fonts.medium, fontSize: 12, lineHeight: 14, marginTop: 4, color: c.text }}>
       {title}
     </Text>
   );

@@ -148,7 +148,7 @@ function buildHtml({ dark, center, zoom, routeColor, attribution }: { dark: bool
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@500&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <style>
-  html,body,#map{margin:0;height:100%;width:100%;background:${dark ? '#1C0A1A' : '#DDE3E8'}}
+  html,body,#map{margin:0;height:100%;width:100%;background:${dark ? '#141414' : '#E8E6E1'}}
   .veh{width:34px;height:34px;border-radius:50%;background:${brand.aubergine};border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
   .veh.off{background:#7A7F89}
   .veh svg{width:18px;height:18px;transition:transform .4s}
@@ -171,7 +171,7 @@ function buildHtml({ dark, center, zoom, routeColor, attribution }: { dark: bool
   .sel .lbl{display:block;background:${brand.aubergine};color:#fff}
   .lbl:empty{display:none !important}
   /* soft marigold glow behind the selected vehicle */
-  .glow{position:absolute;left:50%;top:50%;width:96px;height:96px;margin:-48px 0 0 -48px;border-radius:50%;background:radial-gradient(circle,rgba(234,170,0,.55) 0%,rgba(234,170,0,.25) 45%,rgba(234,170,0,0) 70%);pointer-events:none;display:none;animation:pulse 1.8s ease-in-out infinite}
+  .glow{position:absolute;left:50%;top:50%;width:96px;height:96px;margin:-48px 0 0 -48px;border-radius:50%;background:radial-gradient(circle,rgba(217,54,54,.5) 0%,rgba(217,54,54,.22) 45%,rgba(217,54,54,0) 70%);pointer-events:none;display:none;animation:pulse 1.8s ease-in-out infinite}
   .sel .glow{display:block}
   @keyframes pulse{0%,100%{transform:scale(.85);opacity:.9}50%{transform:scale(1.1);opacity:.6}}
   /* design markers: round white bubble, status ring, red pulse when selected */
