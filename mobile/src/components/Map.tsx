@@ -14,12 +14,17 @@ import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
 import { brand } from '@/theme/colors';
 import { VEHICLE_ART } from '@/lib/vehicleArt';
+import { MARKER_IMAGES } from '@/lib/vehicleMarkerImages';
 import { VEHICLE_SPRITES } from '@/lib/vehicleSprites';
 import { useColors } from '@/theme';
 
 export type LatLon = { lat: number; lon: number };
 /** vehicle: a vehicle type (device.icon) to draw instead of the plain arrow. */
-export type MapMarker = LatLon & { id: string; heading?: number | null; online?: boolean; label?: string; vehicle?: string | null };
+export type MapMarker = LatLon & {
+  id: string; heading?: number | null; online?: boolean; label?: string; vehicle?: string | null;
+  /** Design marker: ring colour of the round bubble, and dashed for No GPS / Offline. */
+  ring?: string; dashed?: boolean;
+};
 export type MapDot = LatLon & { id: string; color: string };
 export type MapCircle = LatLon & { id: string; radiusM: number; draft?: boolean };
 export type MapPolygon = { id: string; points: [number, number][] };
@@ -48,6 +53,10 @@ type Props = {
   selectedId?: string | null;
   /** Map padding (px) so fit/follow keep points clear of overlays like a bottom sheet. */
   padding?: { top?: number; bottom?: number; left?: number; right?: number };
+  /** Round vehicle bubbles with a status ring, red pulse when selected (Map tab). */
+  design?: boolean;
+  /** Satellite imagery instead of the street map. */
+  satellite?: boolean;
   /** Corner for the small map-credit button (default bottom-right). */
   attribution?: 'bottom-left' | 'bottom-right';
   ref?: Ref<AppMapHandle>;
@@ -64,7 +73,7 @@ type WebViewHandle = { injectJavaScript: (js: string) => void };
 
 export function AppMap({
   markers = [], dots = [], route = [], routes = [], circles = [], polygons = [], follow, fitTo, fitKey,
-  initialCenter, initialZoom, onMarkerPress, onLongPress, showLabels, selectedId, padding, attribution = 'bottom-right', ref, style,
+  initialCenter, initialZoom, onMarkerPress, onLongPress, showLabels, selectedId, padding, design, satellite, attribution = 'bottom-right', ref, style,
 }: Props) {
   const c = useColors();
   const web = useRef<WebViewHandle>(null);
@@ -92,6 +101,7 @@ export function AppMap({
     markers, dots, route, routes, circles, polygons, follow: follow || null,
     fitTo: fitTo || null, fitKey: fitKey ?? null, longPress: Boolean(onLongPress),
     labels: Boolean(showLabels), selectedId: selectedId ?? null, padding: padding || null,
+    design: Boolean(design), satellite: Boolean(satellite),
   });
 
   useEffect(() => {
@@ -164,6 +174,23 @@ function buildHtml({ dark, center, zoom, routeColor, attribution }: { dark: bool
   .glow{position:absolute;left:50%;top:50%;width:96px;height:96px;margin:-48px 0 0 -48px;border-radius:50%;background:radial-gradient(circle,rgba(234,170,0,.55) 0%,rgba(234,170,0,.25) 45%,rgba(234,170,0,0) 70%);pointer-events:none;display:none;animation:pulse 1.8s ease-in-out infinite}
   .sel .glow{display:block}
   @keyframes pulse{0%,100%{transform:scale(.85);opacity:.9}50%{transform:scale(1.1);opacity:.6}}
+  /* design markers: round white bubble, status ring, red pulse when selected */
+  .dv{width:40px;height:40px;cursor:pointer}
+  .dv .bub{position:absolute;left:50%;top:50%;width:40px;height:40px;box-sizing:border-box;border-radius:50%;background:#fff;border:2.5px solid var(--ring);box-shadow:0 2px 6px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;transform:translate(-50%,-50%);transition:width .2s,height .2s}
+  .dv.dash .bub{border-style:dashed}
+  .dv .bub img{width:30px;height:auto;display:block}
+  .dv .bub svg{width:30px;height:30px;display:block}
+  .dv.sel .bub{width:50px;height:50px;border:3px solid #D93636;box-shadow:0 3px 10px rgba(0,0,0,.25)}
+  .dv.sel .bub img{width:38px}
+  .dv.sel .bub svg{width:38px;height:38px}
+  .dv .core,.dv .ring{position:absolute;left:50%;top:50%;border-radius:50%;pointer-events:none;display:none}
+  .dv .core{width:60px;height:60px;margin:-30px 0 0 -30px;background:rgba(217,54,54,.18)}
+  .dv .ring{width:40px;height:40px;margin:-20px 0 0 -20px;background:rgba(217,54,54,.5);animation:ring 1.8s ease-out infinite}
+  .dv .ring.b{animation-delay:.9s}
+  .dv.sel .core,.dv.sel .ring{display:block}
+  @keyframes ring{0%{transform:scale(1);opacity:.55}100%{transform:scale(3.3);opacity:0}}
+  .dv .lbl{top:calc(50% + 24px);left:50%;transform:translateX(-50%);font:500 11px/1 'DM Mono',monospace;letter-spacing:0;padding:4px 7px;border-radius:7px;background:rgba(255,255,255,.95);color:#202020;box-shadow:none}
+  .dv.sel .lbl{top:calc(50% + 29px);background:#202020;color:#fff}
   .dot{width:14px;height:14px;border-radius:50%;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
   .maplibregl-ctrl-attrib{font-size:10px}
 </style></head><body><div id="map"></div><script>
@@ -172,6 +199,7 @@ const map = new maplibregl.Map({ container: 'map', style: '${style}', center: [$
 map.addControl(new maplibregl.AttributionControl({ compact: true }), '${attribution}');
 map.touchPitch.disable();
 let ready = false, pending = null, lastFit = null, lastFollow = null, lastPad = null, longPressOn = false;
+let design = false;
 const markerObjs = new Map(), dotObjs = new Map();
 
 function circlePolygon(lat, lon, r) {
@@ -186,9 +214,22 @@ function circlePolygon(lat, lon, r) {
 const fc = (features) => ({ type: 'FeatureCollection', features });
 const VEH = ${JSON.stringify(VEHICLE_ART)};
 const SPRITE = ${JSON.stringify(VEHICLE_SPRITES)};
+const IMG = ${JSON.stringify(MARKER_IMAGES)};
 
 function vehicleEl(m) {
   const el = document.createElement('div');
+  if (design) {
+    el.className = 'dv' + (m.dashed ? ' dash' : '');
+    el.style.setProperty('--ring', m.ring || '#333333');
+    const art = m.vehicle && IMG[m.vehicle] ? '<img alt="" src="' + IMG[m.vehicle] + '">' : (m.vehicle && VEH[m.vehicle]) || '<svg viewBox="0 0 24 24"><path d="M12 2l7 19-7-4-7 4z" fill="#202020"/></svg>';
+    el.innerHTML = '<div class="core"></div><div class="ring"></div><div class="ring b"></div><div class="bub">' + art + '</div>';
+    el.style.position = 'relative';
+    const l = document.createElement('div');
+    l.className = 'lbl';
+    el.appendChild(l);
+    el.addEventListener('click', (e) => { e.stopPropagation(); post({ type: 'marker', id: m.id }); });
+    return el;
+  }
   const color = m.online === false ? '#fff' : '${brand.marigold}';
   const path = m.vehicle && VEH[m.vehicle];
   const sprite = m.vehicle && SPRITE[m.vehicle];
@@ -217,7 +258,7 @@ function syncMarkers(list, s) {
   for (const m of list) {
     seen.add(m.id);
     let obj = markerObjs.get(m.id);
-    const key = String(m.online !== false) + (m.vehicle || '');
+    const key = String(m.online !== false) + (m.vehicle || '') + (design ? 'd' + (m.ring || '') + (m.dashed ? '1' : '0') : '');
     if (obj && obj.key !== key) { obj.marker.remove(); obj = null; }
     if (!obj) {
       const el = vehicleEl(m);
@@ -229,7 +270,7 @@ function syncMarkers(list, s) {
     obj.el.classList.toggle('sel', sel);
     obj.el.style.zIndex = sel ? '5' : '1';
     obj.el.querySelector('.lbl').textContent = m.label || '';
-    (obj.el.querySelector('.ptr') || obj.el.querySelector('img') || obj.el.querySelector('svg')).style.transform = 'rotate(' + (m.heading || 0) + 'deg)';
+    if (!design) (obj.el.querySelector('.ptr') || obj.el.querySelector('img') || obj.el.querySelector('svg')).style.transform = 'rotate(' + (m.heading || 0) + 'deg)';
   }
   for (const [id, obj] of markerObjs) if (!seen.has(id)) { obj.marker.remove(); markerObjs.delete(id); }
 }
@@ -252,6 +293,8 @@ function syncDots(list) {
 }
 
 function apply(s) {
+  design = !!s.design;
+  if (map.getLayer('sat')) map.setLayoutProperty('sat', 'visibility', s.satellite ? 'visible' : 'none');
   syncMarkers(s.markers || [], s);
   const pad = JSON.stringify(s.padding);
   if (s.padding && pad !== lastPad) lastPad = pad, map.setPadding({ top: s.padding.top || 0, bottom: s.padding.bottom || 0, left: s.padding.left || 0, right: s.padding.right || 0 });
@@ -284,6 +327,8 @@ function apply(s) {
 window.update = (s) => { pending = s; if (ready) apply(s); };
 
 map.on('load', () => {
+  map.addSource('sat', { type: 'raster', tileSize: 256, maxzoom: 19, tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], attribution: 'Imagery © Esri' });
+  map.addLayer({ id: 'sat', type: 'raster', source: 'sat', layout: { visibility: 'none' } });
   map.addSource('routes', { type: 'geojson', data: fc([]) });
   map.addLayer({ id: 'routes', type: 'line', source: 'routes', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 4, 'line-opacity': 0.9 } });
   map.addSource('route', { type: 'geojson', data: fc([]) });

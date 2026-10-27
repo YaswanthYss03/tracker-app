@@ -27,3 +27,7 @@ export const STATUS_ORDER: Record<StatusGroup, number> = { moving: 0, stopped: 1
 export function statusColor(g: StatusGroup, c: Palette) {
   return { moving: c.success, stopped: c.text, nogps: c.accent, offline: c.offline }[g];
 }
+
+/** Ring colour of a vehicle bubble on the map (design), and dashed for No GPS / Offline. */
+export const STATUS_RING: Record<StatusGroup, string> = { moving: '#1F8A55', stopped: '#333333', nogps: '#C27400', offline: '#8A8A8A' };
+export const STATUS_DASHED: Record<StatusGroup, boolean> = { moving: false, stopped: false, nogps: true, offline: true };

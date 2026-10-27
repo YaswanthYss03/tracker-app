@@ -1,25 +1,25 @@
-// Map tab: every vehicle on one map with its number plate. A bottom sheet
-// picks the vehicle (plate chips), shows its speed and street address, and
-// steps through vehicles with ‹ Details ›. Zoom, show-all and full screen on
-// the right.
+// Map tab (design): every vehicle as a round bubble with its picture and number
+// plate (red pulse on the selected one). Controls on the right: map/satellite,
+// zoom, show all. Bottom sheet: plate chips to pick a vehicle, its picture,
+// plate and speed, the street address, and ‹ Details › to step through.
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { plateOrName } from '@/api/types';
 import { useTrackers } from '@/live/TrackersProvider';
 import { useAddress } from '@/lib/address';
 import { usePref } from '@/lib/prefs';
-import { timeAgo } from '@/lib/format';
-import { STATUS_LABEL, STATUS_ORDER as ORDER, statusColor, statusGroup } from '@/lib/vehicleStatus';
+import { STATUS_DASHED, STATUS_LABEL, STATUS_ORDER as ORDER, STATUS_RING, statusGroup, type StatusGroup } from '@/lib/vehicleStatus';
 import { selectVehicle, useSelectedVehicle } from '@/lib/selectedVehicle';
 import { AppMap, type AppMapHandle, type LatLon } from '@/components/Map';
-import { Chip, PillButton, Plate, RoundButton, StatusDot, VehicleTile } from '@/components/kit';
+import { VehicleTile } from '@/components/kit';
+import { DIcon, type DesignIconName } from '@/components/DesignIcon';
 import { Button, EmptyState, Loading } from '@/components/ui';
-import { radius, shadow, space, type, useColors } from '@/theme';
+import { fonts } from '@/theme';
+import { useHomeColors as useColors } from '@/theme/designHome';
 
+type HC = ReturnType<typeof useColors>;
 
 export default function MapTab() {
   const c = useColors();
@@ -29,9 +29,8 @@ export default function MapTab() {
   const map = useRef<AppMapHandle>(null);
   const chips = useRef<ComponentRef<typeof ScrollView>>(null);
   const selectedId = useSelectedVehicle();
-  const setSelectedId = selectVehicle;
   const [fitCount, setFitCount] = useState(0);
-  const [full, setFull] = useState(false);
+  const [satellite, setSatellite] = useState(false);
   const [sheetH, setSheetH] = useState(0);
 
   // Vehicles in a stable order: moving first, then by plate.
@@ -45,7 +44,7 @@ export default function MapTab() {
   // Keep a vehicle selected (the first one on the map, if nothing else).
   useEffect(() => {
     if (!rows.length) return;
-    if (!selectedId || !rows.some((r) => r.d.id === selectedId)) setSelectedId((located[0] ?? rows[0]).d.id);
+    if (!selectedId || !rows.some((r) => r.d.id === selectedId)) selectVehicle((located[0] ?? rows[0]).d.id);
   }, [rows, located, selectedId]);
 
   const index = Math.max(0, rows.findIndex((r) => r.d.id === selectedId));
@@ -53,17 +52,10 @@ export default function MapTab() {
   const selPos = sel && sel.s.lat != null ? { lat: sel.s.lat, lon: sel.s.lon! } : null;
   const { address, isLoading: addrLoading } = useAddress(selPos?.lat, selPos?.lon);
 
-  // Sheet slides down out of the way in full screen.
-  const hide = useSharedValue(0);
-  useEffect(() => {
-    hide.value = withTiming(full ? 1 : 0, { duration: 300, easing: Easing.out(Easing.cubic) });
-  }, [full, hide]);
-  const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: hide.value * (sheetH + 20) }] }));
-
   function select(id: string) {
-    setSelectedId(id);
+    selectVehicle(id);
     const i = rows.findIndex((r) => r.d.id === id);
-    chips.current?.scrollTo({ x: Math.max(0, i * 150 - 60), animated: true });
+    chips.current?.scrollTo({ x: Math.max(0, i * 130 - 40), animated: true });
   }
   const step = (by: number) => rows.length && select(rows[(index + by + rows.length) % rows.length].d.id);
 
@@ -82,7 +74,10 @@ export default function MapTab() {
   }
 
   const g = sel.g;
-  const noGps = !selPos;
+  const hasSpeed = g === 'moving' || g === 'stopped';
+  const addressText = !selPos
+    ? 'No GPS position yet'
+    : address ?? (addrLoading ? 'Finding address…' : `${selPos.lat.toFixed(5)}, ${selPos.lon.toFixed(5)}`);
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -91,113 +86,130 @@ export default function MapTab() {
         style={StyleSheet.absoluteFill}
         initialCenter={points[0]}
         initialZoom={13}
+        design
+        satellite={satellite}
         showLabels={platesOnMap}
         selectedId={selectedId}
-        padding={{ top: insets.top + 20, bottom: full ? 20 : sheetH + 20, left: 20, right: 70 }}
-        markers={located.map((r) => ({ id: r.d.id, lat: r.s.lat!, lon: r.s.lon!, heading: r.s.heading, online: r.s.online, label: plateOrName(r.d), vehicle: r.d.icon }))}
+        attribution="bottom-left"
+        padding={{ top: insets.top + 20, bottom: sheetH + 20, left: 20, right: 70 }}
+        markers={located.map((r) => ({
+          id: r.d.id, lat: r.s.lat!, lon: r.s.lon!, label: plateOrName(r.d), vehicle: r.d.icon,
+          ring: STATUS_RING[r.g], dashed: STATUS_DASHED[r.g],
+        }))}
         fitTo={points}
         fitKey={`${located.length}-${fitCount}`}
         follow={selPos}
         onMarkerPress={select}
       />
 
-      {/* Map controls (right) */}
-      <View style={[styles.controls, { top: insets.top + space.md }]} pointerEvents="box-none">
-        <View style={[styles.zoom, { backgroundColor: c.surface }, shadow.card]}>
-          <ZoomBtn icon="add" label="Zoom in" onPress={() => map.current?.zoomIn()} />
-          <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: c.border, marginHorizontal: 10 }} />
-          <ZoomBtn icon="remove" label="Zoom out" onPress={() => map.current?.zoomOut()} />
+      {/* Controls (right): map/satellite, zoom, show all */}
+      <View style={[styles.controls, { top: insets.top + 12 }]} pointerEvents="box-none">
+        <Pressable
+          onPress={() => setSatellite(!satellite)}
+          accessibilityRole="button"
+          accessibilityState={{ selected: satellite }}
+          accessibilityLabel="Satellite view"
+          style={[styles.layerBtn, shadow, { backgroundColor: satellite ? '#202020' : '#FFFFFF' }]}
+        >
+          <DIcon name="layers" size={20} strokeWidth={2} color={satellite ? '#FFFFFF' : '#202020'} />
+          <Text style={{ fontFamily: fonts.bold, fontSize: 10, lineHeight: 10, color: satellite ? '#FFFFFF' : '#202020' }}>{satellite ? 'SAT' : 'MAP'}</Text>
+        </Pressable>
+        <View style={[styles.zoom, shadow]}>
+          <CtlBtn icon="plus" label="Zoom in" onPress={() => map.current?.zoomIn()} />
+          <CtlBtn icon="minus" label="Zoom out" onPress={() => map.current?.zoomOut()} />
         </View>
-        <RoundButton icon="scan-outline" label="Show all vehicles" onPress={() => setFitCount((n) => n + 1)} iconSize={20} />
-        <RoundButton icon={full ? 'contract-outline' : 'expand-outline'} label={full ? 'Exit full screen' : 'Full screen'} onPress={() => setFull(!full)} iconSize={20} />
+        <Pressable onPress={() => setFitCount((n) => n + 1)} accessibilityRole="button" accessibilityLabel="Show all vehicles" style={[styles.fit, shadow]}>
+          <DIcon name="fit" size={20} strokeWidth={2} color="#202020" />
+        </Pressable>
       </View>
 
       {/* Bottom sheet */}
-      <Animated.View
-        onLayout={(e) => setSheetH(e.nativeEvent.layout.height)}
-        style={[styles.sheet, { backgroundColor: c.surface }, shadow.lifted, sheetStyle]}
-      >
-        <View style={[styles.handle, { backgroundColor: c.border }]} />
+      <View onLayout={(e) => setSheetH(e.nativeEvent.layout.height)} style={[styles.sheet, { backgroundColor: c.dark ? c.surface : '#FFFFFF' }]}>
+        <View style={styles.handle} />
 
-        <ScrollView ref={chips} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm, paddingHorizontal: space.lg }}>
+        <ScrollView ref={chips} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 18, paddingBottom: 2 }}>
           {rows.map((r) => (
-            <Chip
-              key={r.d.id}
-              mono
-              outline
-              label={plateOrName(r.d)}
-              selected={r.d.id === selectedId}
-              dot={r.d.id === selectedId && r.g === 'stopped' ? c.bg : statusColor(r.g, c)}
-              hollow={r.g === 'offline'}
-              onPress={() => select(r.d.id)}
-            />
+            <PlateChip key={r.d.id} plate={plateOrName(r.d)} group={r.g} selected={r.d.id === selectedId} onPress={() => select(r.d.id)} c={c} />
           ))}
         </ScrollView>
 
         <View style={styles.vehicle}>
-          <VehicleTile type={sel.d.icon} color={sel.d.color} width={64} height={54} dimmed={g === 'offline'} />
-          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-            <Plate value={plateOrName(sel.d)} size={18} />
-            <View style={styles.statusRow}>
-              <StatusDot group={g} />
-              <Text numberOfLines={1} style={[type.small, { color: c.textMuted, flexShrink: 1 }]}>
-                {STATUS_LABEL[g]}{sel.d.driverName ? ` · ${sel.d.driverName}` : ''} · {timeAgo(sel.s.lastSeenAt)}
-              </Text>
-            </View>
-          </View>
-          {noGps ? (
-            <Text style={[type.bodyStrong, { color: c.danger }]}>No GPS</Text>
-          ) : g === 'offline' ? (
-            <Text style={[type.bodyStrong, { color: c.textMuted }]}>Offline</Text>
-          ) : (
-            <Text maxFontSizeMultiplier={1.2}>
-              <Text style={[type.number, { color: c.text, fontSize: 28 }]}>{sel.s.speed ?? 0}</Text>
-              <Text style={[type.caption, { color: c.textMuted, letterSpacing: 0 }]}> km/h</Text>
+          <VehicleTile type={sel.d.icon} color={sel.d.color} width={74} height={52} dimmed={g === 'offline'} style={{ borderRadius: 16 }} />
+          <Text numberOfLines={1} maxFontSizeMultiplier={1.2} style={{ flex: 1, minWidth: 0, fontFamily: fonts.mono, fontSize: 17, color: c.text }}>{plateOrName(sel.d)}</Text>
+          <Text maxFontSizeMultiplier={1.2} numberOfLines={1}>
+            <Text style={hasSpeed
+              ? { fontFamily: fonts.bold, fontSize: 28, letterSpacing: -0.6, color: c.text }
+              : { fontFamily: fonts.bold, fontSize: 14, color: g === 'nogps' ? c.amberText : c.textMuted }}>
+              {hasSpeed ? String(sel.s.speed ?? 0) : STATUS_LABEL[g]}
             </Text>
-          )}
-        </View>
-
-        <View style={styles.address}>
-          <Ionicons name="location-outline" size={18} color={c.textMuted} />
-          <Text numberOfLines={1} style={[type.body, { color: noGps ? c.textMuted : c.text, flex: 1 }]}>
-            {noGps ? 'No GPS position yet' : address ?? (addrLoading ? 'Finding address…' : `${selPos.lat.toFixed(5)}, ${selPos.lon.toFixed(5)}`)}
+            {hasSpeed ? <Text style={{ fontFamily: fonts.medium, fontSize: 13, color: c.textMuted }}> km/h</Text> : null}
           </Text>
         </View>
 
-        <View style={styles.nav}>
-          <RoundButton icon="chevron-back" label="Previous vehicle" onPress={() => step(-1)} size={52} iconSize={22} />
-          <PillButton title="Details" onPress={() => router.push(`/device/${sel.d.id}`)} style={{ flex: 1 }} />
-          <RoundButton icon="chevron-forward" label="Next vehicle" onPress={() => step(1)} size={52} iconSize={22} />
+        <View style={styles.address}>
+          <DIcon name="pin" size={16} strokeWidth={2} color={c.textMuted} />
+          <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.body, fontSize: 14, color: selPos ? (c.dark ? c.text : '#3A3A3A') : c.textMuted }}>{addressText}</Text>
         </View>
-      </Animated.View>
+
+        <View style={styles.nav}>
+          <RoundNav icon="chevL" label="Previous vehicle" onPress={() => step(-1)} c={c} />
+          <Pressable onPress={() => router.push(`/device/${sel.d.id}`)} accessibilityRole="button" style={[styles.details, { backgroundColor: c.accent }]}>
+            <Text style={{ fontFamily: fonts.bold, fontSize: 16, color: '#FFFFFF' }}>Details</Text>
+          </Pressable>
+          <RoundNav icon="chevR" label="Next vehicle" onPress={() => step(1)} c={c} />
+        </View>
+      </View>
     </View>
   );
 }
 
-function ZoomBtn({ icon, label, onPress }: { icon: 'add' | 'remove'; label: string; onPress: () => void }) {
-  const c = useColors();
+function CtlBtn({ icon, label, onPress }: { icon: DesignIconName; label: string; onPress: () => void }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={({ pressed }) => ({ width: 44, height: 46, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? c.surface2 : 'transparent' })}
-    >
-      <Ionicons name={icon} size={22} color={c.text} />
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={({ pressed }) => ({ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}>
+      <DIcon name={icon} size={20} strokeWidth={2.2} color="#202020" />
     </Pressable>
   );
 }
 
+function RoundNav({ icon, label, onPress, c }: { icon: DesignIconName; label: string; onPress: () => void; c: HC }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={({ pressed }) => [styles.round, { backgroundColor: c.surface, opacity: pressed ? 0.7 : 1 }]}>
+      <DIcon name={icon} size={20} strokeWidth={2.2} color={c.text} />
+    </Pressable>
+  );
+}
+
+/** Pill with a status dot and the plate; dark when selected. */
+function PlateChip({ plate, group, selected, onPress, c }: { plate: string; group: StatusGroup; selected: boolean; onPress: () => void; c: HC }) {
+  const ring = STATUS_RING[group];
+  // On the dark selected chip a dark dot would vanish: use white.
+  const dot = selected && group === 'stopped' ? '#FFFFFF' : ring;
+  const fg = selected ? '#FFFFFF' : c.text;
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`${plate}, ${STATUS_LABEL[group]}`} style={[styles.chip, { backgroundColor: selected ? '#202020' : c.surface }]}>
+      <View style={[styles.dot, group === 'offline' ? { borderWidth: 1.5, borderColor: selected ? '#FFFFFF' : ring } : { backgroundColor: dot }]} />
+      <Text maxFontSizeMultiplier={1.2} style={{ fontFamily: fonts.mono, fontSize: 13, color: fg }}>{plate}</Text>
+    </Pressable>
+  );
+}
+
+const shadow = { elevation: 4, shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 10, shadowOffset: { width: 0, height: 2 } };
 const styles = StyleSheet.create({
-  controls: { position: 'absolute', right: space.lg, gap: space.md, alignItems: 'center' },
-  zoom: { width: 44, borderRadius: 22, overflow: 'hidden' },
+  controls: { position: 'absolute', right: 12, gap: 8, alignItems: 'center' },
+  layerBtn: { width: 44, height: 52, borderRadius: 22, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  zoom: { width: 44, borderRadius: 22, backgroundColor: '#FFFFFF', overflow: 'hidden' },
+  fit: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   sheet: {
-    position: 'absolute', left: 0, right: 0, bottom: 0,
-    borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, paddingTop: space.sm, paddingBottom: space.lg, gap: space.md,
+    position: 'absolute', left: 0, right: 0, bottom: 0, gap: 12, paddingTop: 8, paddingBottom: 16,
+    borderTopLeftRadius: 26, borderTopRightRadius: 26,
+    elevation: 12, shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 30, shadowOffset: { width: 0, height: -8 },
   },
-  handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2 },
-  vehicle: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  address: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: space.lg },
-  nav: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg },
+  handle: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: '#D6D6D6' },
+  chip: { height: 38, paddingHorizontal: 13, borderRadius: 19, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  vehicle: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18 },
+  address: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18 },
+  nav: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18 },
+  round: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
+  details: { flex: 1, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
 });
