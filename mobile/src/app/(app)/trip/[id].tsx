@@ -13,7 +13,10 @@ import { AppMap } from '@/components/Map';
 import { ExpandableMap } from '@/components/ExpandableMap';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import { Card, Plate, RoundButton, Stat, TopBar } from '@/components/kit';
-import { Scrubber, SpeedChart, usePlayback } from '@/components/tripParts';
+import { ReplayTotals, Scrubber, SpeedChart, usePlayback } from '@/components/tripParts';
+import { ROUTE_RED, endDots } from '@/lib/replay';
+import { fonts } from '@/theme';
+import { useResponsive } from '@/lib/responsive';
 import { ErrorBox, Loading } from '@/components/ui';
 import { brand } from '@/theme/colors';
 import { radius, space, type, useColors } from '@/theme';
@@ -29,6 +32,7 @@ function dayName(iso: string) {
 
 export default function TripScreen() {
   const c = useColors();
+  const resp = useResponsive();
   const { id, deviceId, log } = useLocalSearchParams<{ id: string; deviceId: string; log?: string }>();
   const route = log ? 'trip-logs' : 'trips'; // hand-started trips have their own route
   const device = useQuery({ queryKey: ['device', deviceId], queryFn: () => api<{ data: Device }>(`/devices/${deviceId}`) }).data?.data;
@@ -48,8 +52,9 @@ export default function TripScreen() {
   const tNow = t0 + progress * (t1 - t0);
   const idx = points.length ? Math.max(0, points.findIndex((p) => Date.parse(p.t) > tNow) - 1) : 0;
   const at = progress >= 1 ? last : points[idx === -1 ? points.length - 1 : idx];
-  const startAddr = useAddress(trip?.start.lat, trip?.start.lon).address;
-  const endAddr = useAddress(trip?.end?.lat ?? last?.lat, trip?.end?.lon ?? last?.lon).address;
+  const hasData = points.length > 0;
+  const startAddr = useAddress(hasData ? trip?.start.lat : null, hasData ? trip?.start.lon : null).address;
+  const endAddr = useAddress(hasData ? trip?.end?.lat ?? last?.lat : null, hasData ? trip?.end?.lon ?? last?.lon : null).address;
   const driver = device?.mainDriver ?? null;
 
   if (q.isLoading) return <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}><Loading /></SafeAreaView>;
@@ -84,12 +89,9 @@ export default function TripScreen() {
           <AppMap
             initialCenter={coords[0]}
             initialZoom={13}
-            route={coords}
-            dots={coords.length > 1 ? [
-              { id: 'start', ...coords[0], color: brand.marigold },
-              { id: 'end', ...coords[coords.length - 1], color: brand.aubergine },
-            ] : []}
-            markers={at && progress < 1 ? [{ id: 'now', lat: at.lat, lon: at.lon, heading: at.heading, online: true, vehicle: device?.icon }] : []}
+            routes={coords.length > 1 ? [{ id: 'trip', color: ROUTE_RED, points: coords }] : []}
+            dots={endDots(coords, 'trip')}
+            markers={at ? [{ id: 'now', lat: at.lat, lon: at.lon, dot: ROUTE_RED, variant: 'replay' }] : []}
             fitTo={coords}
             fitKey={`${id}-${coords.length}`}
           />
@@ -100,31 +102,44 @@ export default function TripScreen() {
           playing={playing}
           onPlay={() => setPlaying(!playing)}
           disabled={points.length < 2}
-          label={progress > 0 && progress < 1 && at ? `${timeOnly(at.t)} · ${at.speed ?? 0} km/h` : `${km(trip.distanceKm)} km`}
+          label={progress > 0 && progress < 1 && at ? timeOnly(at.t) : undefined}
         />
 
+        {!hasData && (
+          <Text style={{ fontFamily: fonts.body, fontSize: 13, lineHeight: 18, color: c.textMuted, textAlign: 'center' }}>
+            {trip.inProgress
+              ? 'Nothing recorded in this trip yet. Everything the vehicle records from now on is saved here until the next trip is started.'
+              : 'Nothing was recorded in this trip.'}
+          </Text>
+        )}
+
+        <ReplayTotals
+          distanceKm={km(trip.distanceKm)}
+          driveText={duration(Math.max(0, trip.durationS - trip.idleS))}
+          top={top}
+          avg={avg}
+          playSpeed={progress > 0 && progress < 1 && at ? at.speed ?? 0 : null}
+          size={resp.tiny ? 108 : resp.small ? 122 : 140}
+          caption={progress > 0 && progress < 1 && at ? `km/h · ${timeOnly(at.t)}` : undefined}
+        />
+
+        {hasData && (
+          <View style={{ gap: 8 }}>
+            <Text style={{ fontFamily: fonts.bold, fontSize: 13, color: c.text }}>Speed (km/h)</Text>
+            <SpeedChart points={points.map((p) => [Date.parse(p.t), p.speed ?? 0] as [number, number])} cursor={progress > 0 && progress < 1 ? progress : null} height={130} />
+          </View>
+        )}
+
         {/* From → to */}
-        <Card style={{ gap: space.md }}>
-          <Stop color={brand.marigold} place={startAddr ? shortAddress(startAddr, 28) : `${trip.start.lat.toFixed(4)}, ${trip.start.lon.toFixed(4)}`} time={timeOnly(trip.startTime)} />
+        <View style={{ gap: space.md }}>
+          <Stop color={ROUTE_RED} place={!hasData ? 'Waiting for the first position' : startAddr ? shortAddress(startAddr, 28) : `${trip.start.lat.toFixed(4)}, ${trip.start.lon.toFixed(4)}`} time={timeOnly(trip.startTime)} />
           <View style={[styles.connector, { borderColor: c.border }]} />
           <Stop
-            color={brand.aubergine}
-            place={trip.inProgress ? 'Still driving' : endAddr ? shortAddress(endAddr, 28) : (trip.end ? `${trip.end.lat.toFixed(4)}, ${trip.end.lon.toFixed(4)}` : '—')}
+            color="#202020"
+            place={trip.inProgress ? (hasData ? 'Still going' : '—') : endAddr ? shortAddress(endAddr, 28) : (trip.end ? `${trip.end.lat.toFixed(4)}, ${trip.end.lon.toFixed(4)}` : '—')}
             time={trip.endTime ? timeOnly(trip.endTime) : 'now'}
           />
-        </Card>
-
-        <View style={{ flexDirection: 'row' }}>
-          <Stat value={km(trip.distanceKm)} unit="km" label="Distance" />
-          <Stat value={duration(trip.durationS)} label="Duration" />
-          <Stat value={String(avg)} unit="km/h" label="Average" />
-          <Stat value={String(top)} unit="km/h" label="Top" />
         </View>
-
-        <Card style={{ gap: space.sm }}>
-          <Text style={[type.fieldLabel, { color: c.text }]}>Speed</Text>
-          <SpeedChart points={points.map((p) => [Date.parse(p.t), p.speed ?? 0])} cursor={progress > 0 && progress < 1 ? progress : null} />
-        </Card>
 
         {driver && (
           <Card style={styles.driver} onPress={() => router.push(`/drivers/edit?id=${driver.id}`)}>

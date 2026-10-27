@@ -12,6 +12,7 @@ import { DIcon } from '@/components/DesignIcon';
 import { DesignSheet } from '@/components/DesignSheet';
 import { ZONES, clockIn, offsetMinutes, utcLabel, zoneName, type Zone } from '@/lib/timezones';
 import { MiniTabs } from '@/components/MiniTabs';
+import { showToast } from '@/lib/toast';
 import { fonts } from '@/theme';
 import { useHomeColors as useColors } from '@/theme/designHome';
 import type { TabProps } from './types';
@@ -23,17 +24,20 @@ export function SettingsTab({ device, isOwner, reload }: TabProps) {
   const [limit, setLimit] = useState<number | null>(device.speedLimitKmh || null);
   const [query, setQuery] = useState('');
   const saved = useRef<number | null>(device.speedLimitKmh || null);
+  const changed = useRef(false); // something was saved: tell the user when they leave this page
+  const limitNow = useRef(limit);
+  limitNow.current = limit;
   const [timezone, setTimezone] = useState(device.timezone);
   const [notify, setNotify] = useState(device.notify);
   const [zoneOpen, setZoneOpen] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<'release' | 'leave' | null>(null);
 
-  async function save(body: Record<string, unknown>, ok = 'Saved') {
+  async function save(body: Record<string, unknown>) {
     setNote(null);
     try {
       await api(`/devices/${device.id}`, { method: 'PATCH', body });
-      setNote(ok);
+      changed.current = true;
       reload();
       queryClient.invalidateQueries({ queryKey: ['devices'] });
     } catch (err) {
@@ -48,12 +52,24 @@ export function SettingsTab({ device, isOwner, reload }: TabProps) {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [limit]);
+  // Leaving the page: save a pending speed-limit change right away, then show "Settings saved" once.
+  useEffect(() => () => {
+    if (limitNow.current !== saved.current) {
+      saved.current = limitNow.current;
+      api(`/devices/${device.id}`, { method: 'PATCH', body: { speedLimitKmh: limitNow.current } }).catch(() => {});
+      queryClient.invalidateQueries({ queryKey: ['devices'] });
+      changed.current = true;
+    }
+    if (changed.current) showToast('Settings saved');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const step = (by: number) => setLimit((l) => Math.max(10, Math.min(250, (l ?? (by > 0 ? 40 : 45)) + by)));
 
   async function toggleNotify(value: boolean) {
     setNotify(value);
     try {
       await api(`/devices/${device.id}/notifications`, { method: 'PATCH', body: { enabled: value } });
+      changed.current = true;
     } catch {
       setNotify(!value);
     }
@@ -144,7 +160,7 @@ export function SettingsTab({ device, isOwner, reload }: TabProps) {
         <Switch value={notify} onValueChange={toggleNotify} trackColor={{ true: c.accent }} />
       </View>
 
-      {note ? <Text style={[muted, { paddingTop: 10, color: note === 'Saved' ? c.success : c.danger }]}>{note}</Text> : null}
+      {note ? <Text style={[muted, { paddingTop: 10, color: c.danger }]}>{note}</Text> : null}
 
       <Pressable onPress={() => setConfirm(isOwner ? 'release' : 'leave')} accessibilityRole="button" style={{ marginTop: 28, gap: 4 }}>
         <Text style={{ fontFamily: fonts.bold, fontSize: 14, color: c.danger }}>{isOwner ? 'Release tracker' : 'Leave tracker'}</Text>

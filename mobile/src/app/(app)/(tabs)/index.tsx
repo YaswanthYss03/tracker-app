@@ -249,7 +249,7 @@ function Quick({ icon, label, onPress, badge }: { icon: DesignIconName; label: s
   return (
     <View style={{ flex: 1, alignItems: 'center' }}>
       <Pressable accessibilityRole="button" accessibilityLabel={badge ? `${label}, ${badge}` : label} onPress={onPress} style={({ pressed }) => [styles.quick, { width: size, height: size, borderRadius: size / 2, backgroundColor: c.surface, opacity: pressed ? 0.8 : 1 }]}>
-        <DIcon name={icon} size={20} strokeWidth={1.9} color={c.accent} />
+        <DIcon name={icon} size={21} strokeWidth={2.5} color={c.accent} />
         {badge ? (
           <View style={[styles.badge, { top: -2, right: -2, backgroundColor: c.amber, borderColor: c.bg }]}>
             <Text style={[styles.badgeText, { color: '#FFFFFF' }]}>{badge}</Text>

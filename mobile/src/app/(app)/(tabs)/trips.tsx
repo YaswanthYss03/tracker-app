@@ -2,7 +2,7 @@
 // Week bars show km per day; the map replays the route(s) for the window;
 // totals (or a comparison table) and the trips list sit underneath.
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,10 +12,12 @@ import { api } from '@/api/client';
 import { plateOrName, type Device, type RoutePoint, type Trip } from '@/api/types';
 import { useTrackers } from '@/live/TrackersProvider';
 import { duration, km, timeOnly } from '@/lib/format';
-import { dmyToIso, isoToDmy, maskDate } from '@/lib/drivers';
+import { dmyToIso, isoToDmy } from '@/lib/drivers';
+import { hhmm, pointAt, validTime } from '@/lib/replay';
+import { ReplayFields } from '@/components/ReplayFields';
 import { AppMap, type LatLon, type MapMarker, type MapRoute } from '@/components/Map';
 import { Card, Plate } from '@/components/kit';
-import { Scrubber, SpeedGauge, usePlayback } from '@/components/tripParts';
+import { ReplayTotals, Scrubber, SpeedChart, usePlayback } from '@/components/tripParts';
 import { EmptyState, Loading } from '@/components/ui';
 import { fonts, radius, shadow, space, type, useColors } from '@/theme';
 import { useHomeColors } from '@/theme/designHome';
@@ -42,24 +44,6 @@ const localIso = (ms: number) => {
   const d = new Date(ms);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
-const hhmm = (d = new Date()) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-function maskTime(input: string) {
-  const digits = input.replace(/\D/g, '').slice(0, 4);
-  return digits.length > 2 ? `${digits.slice(0, 2)}:${digits.slice(2)}` : digits;
-}
-const validTime = (t: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
-/** Last point at or before time t (binary search). */
-function pointAt(points: RoutePoint[], t: number) {
-  let lo = 0;
-  let hi = points.length - 1;
-  if (hi < 0 || Date.parse(points[0].t) > t) return null;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (Date.parse(points[mid].t) <= t) lo = mid;
-    else hi = mid - 1;
-  }
-  return points[lo];
-}
 
 export default function Trips() {
   const resp = useResponsive();
@@ -234,18 +218,8 @@ export default function Trips() {
           })}
         </View>
 
-        {/* Day and time window */}
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1.3 }}>
-            <WhiteField label="Date" icon="calendar" value={dateText} onChangeText={(x) => setDateText(maskDate(x))} placeholder="DD/MM/YYYY" maxLength={10} white={white} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <WhiteField label="From" icon="clock" value={fromText} onChangeText={(x) => setFromText(maskTime(x))} placeholder="00:00" maxLength={5} white={white} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <WhiteField label="To" icon="clock" value={toText} onChangeText={(x) => setToText(maskTime(x))} placeholder="23:59" maxLength={5} white={white} />
-          </View>
-        </View>
+        {/* Day and time window: tap a field for the calendar / time picker */}
+        <ReplayFields date={date} from={from} to={to} max={today} onDate={pickDay} onFrom={setFromText} onTo={setToText} />
 
         {/* Week bars */}
         <View style={styles.week} accessibilityLabel="Kilometres per day">
@@ -322,17 +296,26 @@ export default function Trips() {
             })}
           </View>
         ) : (
-          <View style={styles.totals}>
-            <View style={styles.sideCol}>
-              <TotalStat value={`${km(total.km)} km`} label="Distance" />
-              <TotalStat value={duration(total.driveS)} label="Driving" />
-            </View>
-            {/* The dial sits in the exact centre; the two stat columns are equal width and centred on it. */}
-            <SpeedGauge size={dial} value={playSpeed} caption={playSpeed != null ? `km/h · ${new Date(tNow).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}` : undefined} />
-            <View style={[styles.sideCol, { alignItems: 'flex-end' }]}>
-              <TotalStat value={`${total.top} km/h`} label="Top speed" right />
-              <TotalStat value={total.avg ? `${total.avg} km/h` : '—'} label="Avg speed" right />
-            </View>
+          <ReplayTotals
+            distanceKm={km(total.km)}
+            driveText={duration(total.driveS)}
+            top={total.top}
+            avg={total.avg}
+            playSpeed={playSpeed}
+            size={dial}
+            caption={playSpeed != null ? `km/h · ${new Date(tNow).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}` : undefined}
+          />
+        )}
+
+        {/* Speed across the replay: one line, or one coloured line per vehicle when comparing */}
+        {hasRoute && (
+          <View style={{ gap: 8 }}>
+            <Text style={{ fontFamily: fonts.bold, fontSize: 13, color: c.text }}>Speed (km/h)</Text>
+            <SpeedChart
+              series={pointsBy.filter((r) => r.points.length > 1).map((r) => ({ color: compare ? r.color : ROUTE_COLORS[0], points: r.points.map((p) => [Date.parse(p.t), p.speed ?? 0] as [number, number]) }))}
+              cursor={progress > 0 && progress < 1 ? progress : null}
+              height={130}
+            />
           </View>
         )}
 
@@ -371,39 +354,6 @@ function VChip({ label, plate, dot, selected, white, onPress }: { label?: string
       {dot ? <View style={[styles.dot8, { backgroundColor: dot }]} /> : null}
       <Text maxFontSizeMultiplier={1.2} style={plate ? { fontFamily: fonts.mono, fontSize: 14, color: fg } : { fontFamily: fonts.bold, fontSize: 14, color: fg }}>{plate ?? label}</Text>
     </Pressable>
-  );
-}
-
-/** Label above a white field with an icon on the right (date / time). */
-function WhiteField({ label, icon, value, onChangeText, placeholder, maxLength, white }: { label: string; icon: 'calendar' | 'clock'; value: string; onChangeText: (t: string) => void; placeholder: string; maxLength: number; white: string }) {
-  const c = useColors();
-  return (
-    <View style={{ gap: 6 }}>
-      <Text style={{ fontFamily: fonts.medium, fontSize: 13, color: c.textMuted }}>{label}</Text>
-      <View style={[styles.field, { backgroundColor: white }]}>
-        <TextInput
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor={c.textMuted}
-          keyboardType="number-pad"
-          maxLength={maxLength}
-          accessibilityLabel={label}
-          style={{ flex: 1, minWidth: 0, fontFamily: fonts.medium, fontSize: 16, color: c.text, paddingVertical: 0 }}
-        />
-        <DIcon name={icon} size={16} strokeWidth={2} color={c.text} />
-      </View>
-    </View>
-  );
-}
-
-function TotalStat({ value, label, right }: { value: string; label: string; right?: boolean }) {
-  const c = useColors();
-  return (
-    <View style={{ gap: 1, alignItems: right ? 'flex-end' : 'flex-start' }}>
-      <Text numberOfLines={1} style={[type.name, { color: c.text, fontSize: 18, lineHeight: 24 }]}>{value}</Text>
-      <Text style={[type.caption, { color: c.textMuted, letterSpacing: 0, fontSize: 12 }]}>{label}</Text>
-    </View>
   );
 }
 

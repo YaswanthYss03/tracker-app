@@ -70,6 +70,19 @@ test('data belongs to the latest trip; starting a new one splits it; delete merg
   assert.deepEqual(list.map((l) => [l.number, l.current, l.points]), [[1, true, 8]]);
 });
 
+test('a trip with no data yet is fine: empty route, zero numbers', async () => {
+  const { t, id } = await setup();
+  const url = `/api/v1/devices/${id}/trip-logs`;
+  const fresh = (await api('POST', url, { token: t, body: {} })).body.data;
+  assert.equal(fresh.name, 'Trip 1');
+  assert.deepEqual([fresh.distanceKm, fresh.durationS, fresh.maxSpeed, fresh.points], [0, 0, 0, 0]);
+  const res = await api('GET', `${url}/${fresh.id}/route`, { token: t });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.data.points.length, 0);
+  assert.equal(res.body.data.trip.inProgress, true);
+  assert.equal(res.body.data.trip.distanceKm, 0);
+});
+
 test('only the owner starts or deletes trips; strangers are out; name is limited', async () => {
   const { t, id } = await setup();
   const url = `/api/v1/devices/${id}/trip-logs`;

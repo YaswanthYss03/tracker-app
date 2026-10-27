@@ -8,6 +8,7 @@ import { useFonts } from 'expo-font';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/auth/AuthProvider';
+import { ToastHost } from '@/components/ToastHost';
 import { fontAssets } from '@/theme/typography';
 import { useColors } from '@/theme';
 import { loadThemePref } from '@/theme/preference';
@@ -48,6 +49,7 @@ function RootNavigator() {
         </Stack.Protected>
         <Stack.Screen name="share/[token]" />
       </Stack>
+      <ToastHost />
       </View>
       </View>
     </>

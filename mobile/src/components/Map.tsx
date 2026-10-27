@@ -278,6 +278,33 @@ function vehicleEl(m) {
   return el;
 }
 
+// Vehicles glide to their new position instead of jumping: the move takes about
+// as long as the gap since the last update (between 0.1 s and 2 s).
+const gliding = new Set();
+let glideOn = false;
+function glideTick() {
+  const now = performance.now();
+  for (const o of gliding) {
+    const k = Math.min(1, (now - o.t0) / o.dur);
+    o.marker.setLngLat([o.from[0] + (o.to[0] - o.from[0]) * k, o.from[1] + (o.to[1] - o.from[1]) * k]);
+    if (k >= 1) gliding.delete(o);
+  }
+  if (gliding.size) requestAnimationFrame(glideTick); else glideOn = false;
+}
+function moveMarker(o, lon, lat) {
+  const now = performance.now();
+  if (!o.to) { o.to = [lon, lat]; o.marker.setLngLat([lon, lat]); o.last = now; return; }
+  if (o.to[0] === lon && o.to[1] === lat) return;
+  const cur = o.marker.getLngLat();
+  o.from = [cur.lng, cur.lat];
+  o.to = [lon, lat];
+  o.t0 = now;
+  o.dur = Math.max(100, Math.min(2000, now - (o.last || now - 1000)));
+  o.last = now;
+  gliding.add(o);
+  if (!glideOn) { glideOn = true; requestAnimationFrame(glideTick); }
+}
+
 function syncMarkers(list, s) {
   const seen = new Set();
   document.getElementById('map').classList.toggle('labels', !!s.labels);
@@ -291,14 +318,14 @@ function syncMarkers(list, s) {
       obj = { key, el, marker: new maplibregl.Marker({ element: el }).setLngLat([m.lon, m.lat]).addTo(map) };
       markerObjs.set(m.id, obj);
     }
-    obj.marker.setLngLat([m.lon, m.lat]);
+    moveMarker(obj, m.lon, m.lat);
     const sel = m.id === s.selectedId;
     obj.el.classList.toggle('sel', sel);
     obj.el.style.zIndex = sel ? '5' : '1';
     obj.el.querySelector('.lbl').textContent = m.label || '';
     if (!design && !m.dot) (obj.el.querySelector('.ptr') || obj.el.querySelector('img') || obj.el.querySelector('svg')).style.transform = 'rotate(' + (m.heading || 0) + 'deg)';
   }
-  for (const [id, obj] of markerObjs) if (!seen.has(id)) { obj.marker.remove(); markerObjs.delete(id); }
+  for (const [id, obj] of markerObjs) if (!seen.has(id)) { gliding.delete(obj); obj.marker.remove(); markerObjs.delete(id); }
 }
 
 function syncDots(list) {

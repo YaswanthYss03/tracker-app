@@ -67,28 +67,36 @@ export function Scrubber({ value, onChange, playing, onPlay, label, disabled }: 
   );
 }
 
-/** Speed (km/h) over time. `points` are [ms, speed]; `cursor` 0..1 draws a marker. */
-export function SpeedChart({ points, height = 120, cursor }: { points: [number, number][]; height?: number; cursor?: number | null }) {
+/**
+ * Speed (km/h) over time as a line chart. `points` = one line ([ms, speed]);
+ * `series` = several coloured lines (Compare). `cursor` 0..1 draws a marker.
+ */
+export function SpeedChart({ points, series, height = 120, cursor }: {
+  points?: [number, number][]; series?: { points: [number, number][]; color: string }[]; height?: number; cursor?: number | null;
+}) {
   const c = useColors();
   const [w, setW] = useState(0);
+  const lines = series ?? [{ points: points ?? [], color: c.accent }];
+  const all = lines.flatMap((l) => l.points);
   const pad = { l: 28, r: 6, t: 8, b: 14 };
-  const max = Math.max(60, Math.ceil(Math.max(...points.map((p) => p[1]), 0) / 20) * 20);
-  const t0 = points[0]?.[0] ?? 0;
-  const t1 = points[points.length - 1]?.[0] ?? 1;
+  const max = Math.max(60, Math.ceil(Math.max(...all.map((p) => p[1]), 0) / 20) * 20);
+  const t0 = all.length ? Math.min(...all.map((p) => p[0])) : 0;
+  const t1 = all.length ? Math.max(...all.map((p) => p[0])) : 1;
   const x = (t: number) => pad.l + ((t - t0) / Math.max(1, t1 - t0)) * (w - pad.l - pad.r);
   const y = (v: number) => pad.t + (1 - v / max) * (height - pad.t - pad.b);
-  const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join(' ');
-  const area = points.length ? `${line} L${x(t1).toFixed(1)},${y(0)} L${x(t0).toFixed(1)},${y(0)} Z` : '';
+  const path = (pts: [number, number][]) => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join(' ');
   const ticks = [0, max / 2, max];
   const cx = cursor != null ? pad.l + cursor * (w - pad.l - pad.r) : null;
+  const single = lines.length === 1;
+  const top = Math.max(0, ...all.map((p) => p[1]));
   return (
-    <View onLayout={(e) => setW(e.nativeEvent.layout.width)} style={{ height }} accessibilityLabel={`Speed chart, top ${Math.max(0, ...points.map((p) => p[1]))} km/h`}>
-      {w > 0 && points.length > 1 && (
+    <View onLayout={(e) => setW(e.nativeEvent.layout.width)} style={{ height }} accessibilityLabel={`Speed chart, top ${top} km/h`}>
+      {w > 0 && all.length > 1 && (
         <Svg width={w} height={height}>
           <Defs>
             <LinearGradient id="spd" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={c.accent} stopOpacity={0.45} />
-              <Stop offset="1" stopColor={c.accent} stopOpacity={0.05} />
+              <Stop offset="0" stopColor={lines[0].color} stopOpacity={0.22} />
+              <Stop offset="1" stopColor={lines[0].color} stopOpacity={0.02} />
             </LinearGradient>
           </Defs>
           {ticks.map((v) => (
@@ -97,11 +105,41 @@ export function SpeedChart({ points, height = 120, cursor }: { points: [number, 
           {ticks.map((v) => (
             <SvgText key={`l${v}`} x={pad.l - 6} y={y(v) + 4} fontSize={10} fill={c.textMuted} textAnchor="end">{Math.round(v)}</SvgText>
           ))}
-          <Path d={area} fill="url(#spd)" />
-          <Path d={line} stroke={c.text} strokeWidth={1.6} fill="none" strokeLinejoin="round" />
+          {single && lines[0].points.length > 1 && (
+            <Path d={`${path(lines[0].points)} L${x(lines[0].points[lines[0].points.length - 1][0]).toFixed(1)},${y(0)} L${x(lines[0].points[0][0]).toFixed(1)},${y(0)} Z`} fill="url(#spd)" />
+          )}
+          {lines.map((l, i) => l.points.length > 1 && (
+            <Path key={i} d={path(l.points)} stroke={l.color} strokeWidth={single ? 2 : 1.8} fill="none" strokeLinejoin="round" strokeLinecap="round" />
+          ))}
           {cx != null && <Line x1={cx} x2={cx} y1={pad.t} y2={y(0)} stroke={c.text} strokeWidth={1} />}
         </Svg>
       )}
+    </View>
+  );
+}
+
+/** Distance and driving on the left, top and average speed on the right, the dial exactly in the middle. */
+export function ReplayTotals({ distanceKm, driveText, top, avg, playSpeed, caption, size = 140 }: {
+  distanceKm: string; driveText: string; top: number; avg: number; playSpeed: number | null; caption?: string; size?: number;
+}) {
+  const c = useColors();
+  const stat = (value: string, label: string, right?: boolean) => (
+    <View style={{ gap: 1, alignItems: right ? 'flex-end' : 'flex-start' }}>
+      <Text numberOfLines={1} style={{ fontFamily: type.name.fontFamily, fontSize: 18, lineHeight: 24, color: c.text }}>{value}</Text>
+      <Text style={{ fontFamily: type.caption.fontFamily, fontSize: 12, color: c.textMuted }}>{label}</Text>
+    </View>
+  );
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 2 }}>
+      <View style={{ flex: 1, minWidth: 0, gap: 14, justifyContent: 'center' }}>
+        {stat(`${distanceKm} km`, 'Distance')}
+        {stat(driveText, 'Driving')}
+      </View>
+      <SpeedGauge size={size} value={playSpeed} caption={caption} />
+      <View style={{ flex: 1, minWidth: 0, gap: 14, justifyContent: 'center', alignItems: 'flex-end' }}>
+        {stat(`${top} km/h`, 'Top speed', true)}
+        {stat(avg ? `${avg} km/h` : '—', 'Avg speed', true)}
+      </View>
     </View>
   );
 }
