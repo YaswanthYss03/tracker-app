@@ -60,7 +60,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "build:apk": "eas build -p android --profile preview",
-    "build:store": "eas build -p android --profile production"
+    "build:store": "eas build -p android --profile production",
+    "phone": "node scripts/start-phone.js"
   },
   "private": true
 }
