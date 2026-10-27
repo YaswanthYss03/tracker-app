@@ -4,8 +4,8 @@ import type { Palette } from '@/theme/colors';
 import { useColors } from '@/theme';
 
 export const designLight: Palette & { green: string; greenText: string; amber: string; amberText: string; track: string } = {
-  bg: '#F2F2F2',
-  surface: '#FFFFFF',
+  bg: '#FFFFFF',
+  surface: '#F2F2F2',
   surface2: '#E4E4E4',
   text: '#202020',
   textMuted: '#5E5E5E',

@@ -101,7 +101,7 @@ export default function Home() {
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
             <AppMap initialCenter={points[0]} initialZoom={12} dots={dots} fitTo={points} fitKey={dots.length} padding={{ top: 24, bottom: 24, left: 24, right: 24 }} attribution="bottom-left" />
           </View>
-          <View style={[styles.expand, { backgroundColor: c.surface }]}>
+          <View style={[styles.expand, { backgroundColor: c.dark ? c.surface : '#FFFFFF' }]}>
             <DIcon name="expand" size={18} strokeWidth={2.2} />
           </View>
         </Pressable>
@@ -238,7 +238,7 @@ function DesignSheet({ visible, onClose, title, children }: { visible: boolean; 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} onPress={onClose} accessibilityLabel="Close" />
-      <View style={{ marginTop: 'auto', backgroundColor: c.surface, borderTopLeftRadius: 26, borderTopRightRadius: 26, paddingTop: 8, paddingHorizontal: 20, paddingBottom: 24, gap: 12, maxHeight: '80%' }}>
+      <View style={{ marginTop: 'auto', backgroundColor: c.dark ? c.surface : '#FFFFFF', borderTopLeftRadius: 26, borderTopRightRadius: 26, paddingTop: 8, paddingHorizontal: 20, paddingBottom: 24, gap: 12, maxHeight: '80%' }}>
         <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: '#D6D6D6' }} />
         <Text style={{ fontFamily: fonts.bold, fontSize: 20, color: c.text }}>{title}</Text>
         {children}
