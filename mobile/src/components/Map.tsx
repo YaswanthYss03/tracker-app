@@ -26,8 +26,10 @@ export type MapMarker = LatLon & {
   ring?: string; dashed?: boolean;
   /** Plain dot marker (vehicle details): this fill colour, red ring, soft red halo. */
   dot?: string;
+  /** 'replay': coloured dot with a white edge and a white plate tag above it (Replay page). */
+  variant?: 'ring' | 'replay';
 };
-export type MapDot = LatLon & { id: string; color: string };
+export type MapDot = LatLon & { id: string; color: string; /** White dot with a dark ring (trip start / end). */ hollow?: boolean };
 export type MapCircle = LatLon & { id: string; radiusM: number; draft?: boolean; color?: string };
 export type MapPolygon = { id: string; points: [number, number][]; color?: string };
 /** Extra coloured lines (e.g. several vehicles' routes when comparing). */
@@ -176,6 +178,13 @@ function buildHtml({ dark, center, zoom, routeColor, attribution }: { dark: bool
   .glow{position:absolute;left:50%;top:50%;width:96px;height:96px;margin:-48px 0 0 -48px;border-radius:50%;background:radial-gradient(circle,rgba(217,54,54,.5) 0%,rgba(217,54,54,.22) 45%,rgba(217,54,54,0) 70%);pointer-events:none;display:none;animation:pulse 1.8s ease-in-out infinite}
   .sel .glow{display:block}
   @keyframes pulse{0%,100%{transform:scale(.85);opacity:.9}50%{transform:scale(1.1);opacity:.6}}
+  /* replay marker: coloured dot, white edge, plate tag above */
+  .pr{width:18px;height:18px;cursor:pointer}
+  .pr .pt{position:relative;width:18px;height:18px;box-sizing:border-box;border-radius:50%;background:var(--fill);border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35)}
+  .labels .pr .lbl{display:flex}
+  .pr .lbl{top:auto;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);align-items:center;gap:6px;background:#fff;color:#202020;font:600 12px/1 'DM Sans',sans-serif;letter-spacing:0;padding:6px 9px;border-radius:10px;box-shadow:0 1px 6px rgba(0,0,0,.25)}
+  .pr .lbl:before{content:'';width:7px;height:7px;border-radius:50%;background:var(--fill);flex:none}
+  .dot.hollow{width:12px;height:12px;background:#fff;border:2.5px solid #202020;box-shadow:none}
   /* plain dot (vehicle details) */
   .pd{width:20px;height:20px;cursor:pointer}
   .pd .halo{position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;background:rgba(217,54,54,.2);pointer-events:none}
@@ -225,9 +234,10 @@ const IMG = ${JSON.stringify(MARKER_IMAGES)};
 function vehicleEl(m) {
   const el = document.createElement('div');
   if (m.dot) {
-    el.className = 'pd';
+    const replay = m.variant === 'replay';
+    el.className = replay ? 'pr' : 'pd';
     el.style.setProperty('--fill', m.dot);
-    el.innerHTML = '<div class="halo"></div><div class="pt"></div>';
+    el.innerHTML = (replay ? '' : '<div class="halo"></div>') + '<div class="pt"></div>';
     el.style.position = 'relative';
     const l = document.createElement('div');
     l.className = 'lbl';
@@ -274,7 +284,7 @@ function syncMarkers(list, s) {
   for (const m of list) {
     seen.add(m.id);
     let obj = markerObjs.get(m.id);
-    const key = String(m.online !== false) + (m.vehicle || '') + (m.dot || '') + (design ? 'd' + (m.ring || '') + (m.dashed ? '1' : '0') : '');
+    const key = String(m.online !== false) + (m.vehicle || '') + (m.dot || '') + (m.variant || '') + (design ? 'd' + (m.ring || '') + (m.dashed ? '1' : '0') : '');
     if (obj && obj.key !== key) { obj.marker.remove(); obj = null; }
     if (!obj) {
       const el = vehicleEl(m);
@@ -298,11 +308,11 @@ function syncDots(list) {
     let obj = dotObjs.get(d.id);
     if (!obj) {
       const el = document.createElement('div');
-      el.className = 'dot';
+      el.className = d.hollow ? 'dot hollow' : 'dot';
       obj = { el, marker: new maplibregl.Marker({ element: el }).setLngLat([d.lon, d.lat]).addTo(map) };
       dotObjs.set(d.id, obj);
     }
-    obj.el.style.background = d.color;
+    obj.el.style.background = d.hollow ? '' : d.color;
     obj.marker.setLngLat([d.lon, d.lat]);
   }
   for (const [id, obj] of dotObjs) if (!seen.has(id)) { obj.marker.remove(); dotObjs.delete(id); }
@@ -346,7 +356,7 @@ map.on('load', () => {
   map.addSource('sat', { type: 'raster', tileSize: 256, maxzoom: 19, tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], attribution: 'Imagery © Esri' });
   map.addLayer({ id: 'sat', type: 'raster', source: 'sat', layout: { visibility: 'none' } });
   map.addSource('routes', { type: 'geojson', data: fc([]) });
-  map.addLayer({ id: 'routes', type: 'line', source: 'routes', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 4, 'line-opacity': 0.9 } });
+  map.addLayer({ id: 'routes', type: 'line', source: 'routes', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 5, 'line-opacity': 0.95 } });
   map.addSource('route', { type: 'geojson', data: fc([]) });
   map.addLayer({ id: 'route', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '${routeColor}', 'line-width': 5 } });
   map.addSource('fences', { type: 'geojson', data: fc([]) });

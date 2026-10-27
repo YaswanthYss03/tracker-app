@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
-import { Ionicons } from '@expo/vector-icons';
+import { DIcon } from '@/components/DesignIcon';
 import { shadow, space, type, useColors } from '@/theme';
 
 /** Plays 0 → 1 over `durationMs` while `playing`; returns [progress, setProgress]. */
@@ -44,9 +44,9 @@ export function Scrubber({ value, onChange, playing, onPlay, label, disabled }: 
         disabled={disabled}
         accessibilityRole="button"
         accessibilityLabel={playing ? 'Pause' : 'Play'}
-        style={[styles.play, { backgroundColor: c.surface, opacity: disabled ? 0.4 : 1 }, shadow.card]}
+        style={[styles.play, { backgroundColor: c.dark ? c.surface : '#FFFFFF', opacity: disabled ? 0.4 : 1 }]}
       >
-        <Ionicons name={playing ? 'pause' : 'play'} size={20} color={c.text} style={{ marginLeft: playing ? 0 : 2 }} />
+        <DIcon name={playing ? 'pause' : 'play'} size={18} strokeWidth={2.2} color={c.accent} />
       </Pressable>
       <View
         style={styles.track}
@@ -58,9 +58,9 @@ export function Scrubber({ value, onChange, playing, onPlay, label, disabled }: 
         accessibilityRole="adjustable"
         accessibilityValue={{ min: 0, max: 100, now: Math.round(value * 100) }}
       >
-        <View style={[styles.rail, { backgroundColor: c.surface2 }]} />
+        <View style={[styles.rail, { backgroundColor: c.dark ? c.surface2 : '#DADADA' }]} />
         <View style={[styles.rail, { width: `${value * 100}%`, backgroundColor: c.accent }]} />
-        <View style={[styles.knob, { left: value * w - 9, backgroundColor: c.accent, borderColor: c.surface }]} />
+        <View style={[styles.knob, { left: value * w - 10, backgroundColor: c.accent }]} />
       </View>
       {label ? <Text style={[type.caption, { color: c.text, letterSpacing: 0, fontFamily: type.fieldLabel.fontFamily }]}>{label}</Text> : null}
     </View>
@@ -154,6 +154,6 @@ const styles = StyleSheet.create({
   scrub: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   play: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   track: { flex: 1, height: 32, justifyContent: 'center' },
-  rail: { position: 'absolute', left: 0, right: 0, height: 6, borderRadius: 3 },
-  knob: { position: 'absolute', width: 18, height: 18, borderRadius: 9, borderWidth: 3 },
+  rail: { position: 'absolute', left: 0, right: 0, height: 8, borderRadius: 4 },
+  knob: { position: 'absolute', width: 20, height: 20, borderRadius: 10 },
 });
