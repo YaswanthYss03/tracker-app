@@ -1,160 +1,163 @@
-// Home: logo + alerts bell, a map card with every vehicle (tap the corner
-// button for full screen), quick actions, status filters, and one card per
-// vehicle with its number plate, driver, km today, speed and last update.
-import { useMemo, useRef, useState, type ComponentRef } from 'react';
-import { FlatList, Modal, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+// Home (design v2): logo + alerts bell, a small live map (tap it for the Map
+// tab), quick actions, status tabs with search and sort, then one row per
+// vehicle: picture, number plate, driver + km today, speed and last update.
+// The vehicle picked last (here or on the Map tab) is highlighted.
+import { useMemo, useState } from 'react';
+import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { errorText } from '@/api/client';
-import { deviceName, plateOrName, type Device, type Live } from '@/api/types';
+import { plateOrName, type Device, type Live } from '@/api/types';
 import { useTrackers } from '@/live/TrackersProvider';
 import { useUnreadAlerts } from '@/lib/alertsSeen';
-import { timeAgo } from '@/lib/format';
-import { STATUS_LABEL, statusColor, statusGroup, type StatusGroup } from '@/lib/vehicleStatus';
-import { AppMap } from '@/components/Map';
-import { MapFullscreen, type Rect } from '@/components/MapFullscreen';
-import { VehicleArt } from '@/components/VehicleArt';
-import { AppText, ErrorBox } from '@/components/ui';
-import { SkeletonRows } from '@/components/effects';
-import { Banner, PillButton, Plate, Sheet, VehicleTile } from '@/components/kit';
+import { agoText, timeAgo } from '@/lib/format';
+import { selectVehicle, useSelectedVehicle } from '@/lib/selectedVehicle';
+import { STATUS_LABEL, STATUS_ORDER, statusColor, statusGroup, type StatusGroup } from '@/lib/vehicleStatus';
+import { colorOf } from '@/lib/vehicleColors';
 import { DUE_SOON_DAYS, daysUntil, dueText } from '@/lib/service';
+import { AppMap } from '@/components/Map';
+import { Banner, PillButton, Plate, Sheet, VehicleTile } from '@/components/kit';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import { DIcon, type DesignIconName } from '@/components/DesignIcon';
-import { radius, space, type, useColors } from '@/theme';
+import { fonts, type, useColors, type Palette } from '@/theme';
 
 type Filter = 'all' | StatusGroup;
-type Sort = 'status' | 'plate' | 'speed' | 'km';
-const SORTS: [Sort, string][] = [['status', 'Status'], ['plate', 'Number plate'], ['speed', 'Speed'], ['km', 'Km today']];
-const ORDER: Record<StatusGroup, number> = { moving: 0, idle: 1, stopped: 2, offline: 3 };
+type Sort = 'recent' | 'plate' | 'speed' | 'status';
+const SORTS: [Sort, string][] = [['recent', 'Most recently updated'], ['plate', 'Number plate (A–Z)'], ['speed', 'Fastest first'], ['status', 'Moving first']];
+const GROUPS: StatusGroup[] = ['moving', 'stopped', 'nogps', 'offline'];
+/** Screen side padding from the design. */
+const PAD = 20;
+/** Service progress bar: a typical 6-month service interval. */
+const SERVICE_CYCLE_DAYS = 182;
+
+type Row = { d: Device; s: Live; g: StatusGroup };
 
 export default function Home() {
   const c = useColors();
   const { devices, stateOf, isLoading, isRefetching, error, refetch, offline, updatedAt } = useTrackers();
   const unread = useUnreadAlerts();
+  const selectedId = useSelectedVehicle();
   const [filter, setFilter] = useState<Filter>('all');
-  const [sort, setSort] = useState<Sort>('status');
-  const [sortOpen, setSortOpen] = useState(false);
+  const [sort, setSort] = useState<Sort>('recent');
+  const [sheet, setSheet] = useState<'sort' | 'service' | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [shareOpen, setShareOpen] = useState(false);
-  const [serviceOpen, setServiceOpen] = useState(false);
-  const [full, setFull] = useState(false);
-  const [cardRect, setCardRect] = useState<Rect | null>(null);
-  const mapCard = useRef<ComponentRef<typeof View>>(null);
 
-  const rows = devices.map((d) => ({ d, s: stateOf(d), g: statusGroup(stateOf(d)) }));
-  // Vehicles with a service date set, soonest first; "due soon" = within 15 days or overdue.
+  const rows: Row[] = devices.map((d) => ({ d, s: stateOf(d), g: statusGroup(stateOf(d)) }));
+  const counts: Record<StatusGroup, number> = { moving: 0, stopped: 0, nogps: 0, offline: 0 };
+  rows.forEach((r) => (counts[r.g] += 1));
+
+  // Vehicles with a service date, soonest first; "due soon" = within 15 days or overdue.
   const serviceList = devices
     .filter((d) => d.serviceDue)
     .map((d) => ({ d, days: daysUntil(d.serviceDue!) }))
     .sort((a, b) => a.days - b.days);
   const dueSoon = serviceList.filter((x) => x.days <= DUE_SOON_DAYS);
-  const counts = { moving: 0, stopped: 0, idle: 0, offline: 0 } as Record<StatusGroup, number>;
-  rows.forEach((r) => (counts[r.g] += 1));
+  const dueDays = new Map(serviceList.map((x) => [x.d.id, x.days]));
 
-  const markers = rows
+  // Map card: one dot per vehicle in its body colour.
+  const dots = rows
     .filter((r) => r.s.lat != null && r.s.lon != null)
-    .map((r) => ({ id: r.d.id, lat: r.s.lat!, lon: r.s.lon!, heading: r.s.heading, online: r.s.online, label: plateOrName(r.d), vehicle: r.d.icon }));
-  const points = markers.map((m) => ({ lat: m.lat, lon: m.lon }));
+    .map((r) => ({ id: r.d.id, lat: r.s.lat!, lon: r.s.lon!, color: colorOf(r.d.color)?.hex ?? c.text }));
+  const points = dots.map((p) => ({ lat: p.lat, lon: p.lon }));
 
   const q = query.trim().toLowerCase();
+  const seen = (r: Row) => (r.s.lastSeenAt ? Date.parse(r.s.lastSeenAt) : 0);
   const visible = useMemo(() => rows
     .filter((r) => filter === 'all' || r.g === filter)
     .filter((r) => !q || [r.d.registrationNumber, r.d.name, r.d.driverName, r.d.imei].some((v) => v?.toLowerCase().includes(q)))
     .sort((a, b) => {
       if (sort === 'plate') return plateOrName(a.d).localeCompare(plateOrName(b.d));
-      if (sort === 'speed') return (b.s.online ? b.s.speed ?? 0 : -1) - (a.s.online ? a.s.speed ?? 0 : -1);
-      if (sort === 'km') return (b.d.todayKm ?? 0) - (a.d.todayKm ?? 0);
-      return ORDER[a.g] - ORDER[b.g];
+      if (sort === 'speed') return (b.g === 'moving' ? b.s.speed ?? 0 : -1) - (a.g === 'moving' ? a.s.speed ?? 0 : -1);
+      if (sort === 'status') return STATUS_ORDER[a.g] - STATUS_ORDER[b.g];
+      return seen(b) - seen(a);
     }), [rows, filter, q, sort]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function openFull() {
-    mapCard.current?.measureInWindow((x: number, y: number, width: number, height: number) => {
-      setCardRect({ x, y, width, height });
-      setFull(true);
-    });
+  function open(id: string) {
+    selectVehicle(id);
+    router.push(`/device/${id}`);
+  }
+  function closeSearch() {
+    setQuery('');
+    setSearchOpen(false);
   }
 
   const quickActions = (
-    <View style={styles.actions}>
-      <Quick icon="replay" label="Trips" onPress={() => router.push('/trips')} />
+    <View style={styles.actions} accessibilityRole="toolbar" accessibilityLabel="Quick actions">
+      <Quick icon="replay" label="Replay trips" onPress={() => router.navigate('/trips')} />
       <Quick icon="carPlus" label="Add vehicle" onPress={() => router.push('/add-tracker')} />
-      <Quick icon="users" label="Share with family" onPress={() => (devices.length === 1 ? router.push(`/device/${devices[0].id}?tab=sharing`) : setShareOpen(true))} />
-      <Quick icon="wrench" label="Service & support" badge={dueSoon.length || undefined} onPress={() => setServiceOpen(true)} />
+      <Quick icon="users" label="Drivers" onPress={() => router.push('/drivers')} />
+      <Quick icon="wrench" label="Service due" badge={dueSoon.length || undefined} onPress={() => setSheet('service')} />
     </View>
   );
 
   const header = (
-    <View style={{ gap: space.lg }}>
-      {!offline && <ErrorBox error={error ? errorText(error) : null} />}
-
-      {/* Map of all vehicles */}
-      <View ref={mapCard} collapsable={false} style={[styles.mapCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-        <AppMap
-          initialCenter={points[0]}
-          initialZoom={12}
-          markers={markers}
-          fitTo={points}
-          fitKey={markers.length}
-          onMarkerPress={(id) => router.push(`/device/${id}`)}
-        />
-        <Pressable accessibilityRole="button" accessibilityLabel="Full screen map" onPress={openFull} style={[styles.fullBtn, { backgroundColor: c.surface }]}>
-          <Ionicons name="expand-outline" size={20} color={c.text} />
+    <View>
+      <View style={{ gap: 18 }}>
+        {/* Live map of every vehicle; tap for the Map tab */}
+        <Pressable onPress={() => router.navigate('/map')} accessibilityRole="button" accessibilityLabel="Open the live map" style={[styles.mapCard, { backgroundColor: c.surface2 }]}>
+          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+            <AppMap initialCenter={points[0]} initialZoom={12} dots={dots} fitTo={points} fitKey={dots.length} padding={{ top: 24, bottom: 24, left: 24, right: 24 }} attribution="bottom-left" />
+          </View>
+          <View style={[styles.expand, { backgroundColor: c.surface }]}>
+            <DIcon name="expand" size={18} strokeWidth={2.2} />
+          </View>
         </Pressable>
+
+        {quickActions}
+
+        {offline && <Banner icon="cloud-offline-outline" text={`Offline · saved ${timeAgo(new Date(updatedAt).toISOString())}`} />}
+        {!offline && error ? <Banner icon="alert-circle-outline" tone="soft" text={errorText(error)} /> : null}
       </View>
 
-      {quickActions}
-
-      {offline && <Banner icon="cloud-offline-outline" text={`Offline · saved ${timeAgo(new Date(updatedAt).toISOString())}`} />}
-
-      {/* Status filters + search + sort */}
+      {/* Status tabs + search + sort */}
       <View style={[styles.filterBar, { borderBottomColor: c.border }]}>
-        <View style={styles.filters}>
-          <FilterTab active={filter === 'all'} onPress={() => setFilter('all')} label={`All ${devices.length}`} />
-          {(['moving', 'stopped', 'idle', 'offline'] as StatusGroup[]).map((g) => (
-            <FilterTab key={g} active={filter === g} onPress={() => setFilter(filter === g ? 'all' : g)} label={String(counts[g])} dot={statusColor(g, c)} hollow={g === 'offline'} a11y={`${STATUS_LABEL[g]}: ${counts[g]}`} />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 16 }}>
+          <StatusTab label={`All ${devices.length}`} a11y={`All, ${devices.length}`} active={filter === 'all'} onPress={() => setFilter('all')} />
+          {GROUPS.map((g) => (
+            <StatusTab key={g} label={String(counts[g])} a11y={`${STATUS_LABEL[g]}, ${counts[g]}`} active={filter === g} onPress={() => setFilter(g)} group={g} />
           ))}
-        </View>
-        <Pressable accessibilityLabel="Search vehicles" onPress={() => setSearchOpen(!searchOpen)} hitSlop={8} style={styles.barIcon}>
-          <Ionicons name="search" size={20} color={c.text} />
+        </ScrollView>
+        <Pressable onPress={() => (searchOpen || query ? closeSearch() : setSearchOpen(true))} accessibilityRole="button" accessibilityLabel="Search vehicles" accessibilityState={{ expanded: searchOpen }} style={styles.barBtn}>
+          <DIcon name="search" size={20} strokeWidth={2} />
         </Pressable>
-        <Pressable accessibilityLabel="Sort vehicles" onPress={() => setSortOpen(true)} hitSlop={8} style={styles.barIcon}>
-          <MaterialCommunityIcons name="sort" size={22} color={c.text} />
+        <Pressable onPress={() => setSheet('sort')} accessibilityRole="button" accessibilityLabel={`Sort: ${SORTS.find((x) => x[0] === sort)![1]}`} style={styles.barBtn}>
+          <DIcon name="sort" size={20} strokeWidth={1.9} />
+          {sort !== 'recent' && <View style={[styles.sortDot, { backgroundColor: c.accent }]} />}
         </Pressable>
       </View>
-      {searchOpen && (
-        <View style={[styles.search, { backgroundColor: c.surface, borderColor: c.border }]}>
-          <Ionicons name="search" size={18} color={c.textMuted} />
+      {searchOpen || query ? (
+        <View style={[styles.search, { backgroundColor: c.surface }]}>
           <TextInput
             value={query}
             onChangeText={setQuery}
             autoFocus
-            placeholder="Number plate, driver or name"
+            placeholder="Number plate, name or driver"
             placeholderTextColor={c.textMuted}
-            autoCapitalize="characters"
-            style={[type.body, { flex: 1, color: c.text, paddingVertical: 0 }]}
+            accessibilityLabel="Search vehicles"
+            style={{ flex: 1, minWidth: 0, fontFamily: fonts.body, fontSize: 15, color: c.text, paddingVertical: 0 }}
           />
-          {query ? <Ionicons name="close-circle" size={18} color={c.textMuted} onPress={() => setQuery('')} /> : null}
+          <Pressable onPress={closeSearch} accessibilityRole="button" accessibilityLabel="Close search" style={styles.searchX}>
+            <DIcon name="x" size={16} strokeWidth={2.2} color={c.textMuted} />
+          </Pressable>
         </View>
-      )}
+      ) : null}
     </View>
   );
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={styles.topbar}>
-        <View style={styles.brand}>
-          <View style={[styles.logoMark, { backgroundColor: c.accent }]}>
-            <Ionicons name="location" size={18} color={c.onAccent} />
-          </View>
-          <Text maxFontSizeMultiplier={1} style={[type.wordmark, { fontSize: 30, lineHeight: 40, color: c.text }]}>Pavakie</Text>
+        <View style={[styles.logoMark, { backgroundColor: c.accent }]}>
+          <Ionicons name="location" size={20} color={c.onAccent} />
         </View>
+        <Text maxFontSizeMultiplier={1} style={[type.wordmark, { flex: 1, fontSize: 30, lineHeight: 40, color: c.text }]}>Pavakie</Text>
         <Pressable accessibilityRole="button" accessibilityLabel={unread ? `Alerts, ${unread} new` : 'Alerts'} onPress={() => router.push('/alerts')} style={[styles.bell, { backgroundColor: c.surface }]}>
-          <Ionicons name="notifications-outline" size={22} color={c.text} />
+          <DIcon name="bell" size={22} strokeWidth={1.9} />
           {unread > 0 && (
-            <View style={[styles.badge, { backgroundColor: c.danger, borderColor: c.bg }]}>
-              <Text style={styles.badgeText}>{unread > 9 ? '9+' : unread}</Text>
+            <View style={[styles.badge, { top: 2, right: 1, backgroundColor: c.accent, borderColor: c.surface }]}>
+              <Text style={[styles.badgeText, { color: c.onAccent }]}>{unread > 99 ? '99+' : unread}</Text>
             </View>
           )}
         </Pressable>
@@ -163,25 +166,25 @@ export default function Home() {
       {isLoading ? (
         <View style={styles.state}>
           {quickActions}
-          <SkeletonRows count={3} />
+          <View style={{ gap: 10 }} accessibilityLabel="Loading vehicles">
+            {[0, 1, 2].map((i) => <View key={i} style={{ height: 64, borderRadius: 18, backgroundColor: c.surface2 }} />)}
+          </View>
         </View>
       ) : devices.length === 0 && error ? (
         <View style={styles.state}>
           {quickActions}
-          <View style={styles.stateBody}>
-            <Ionicons name={offline ? 'cloud-offline-outline' : 'alert-circle-outline'} size={40} color={c.textMuted} />
-            <AppText variant="h3" center>{offline ? 'No internet connection' : "Couldn't load vehicles"}</AppText>
-            {!offline && <AppText color="textMuted" center>{errorText(error)}</AppText>}
-            <PillButton title="Try again" icon="refresh" onPress={refetch} loading={isRefetching} style={{ alignSelf: 'center', minWidth: 180 }} />
+          <View style={styles.stateBody} accessibilityRole="alert">
+            <Text style={[styles.stateTitle, { color: c.text }]}>{offline ? 'No internet connection' : 'Couldn’t load vehicles'}</Text>
+            {!offline && <Text style={[type.small, { color: c.textMuted, textAlign: 'center' }]}>{errorText(error)}</Text>}
+            <PillButton title="Try again" onPress={refetch} loading={isRefetching} style={{ alignSelf: 'center', minWidth: 160 }} />
           </View>
         </View>
       ) : devices.length === 0 ? (
         <View style={styles.state}>
           {quickActions}
           <View style={styles.stateBody}>
-            <AppText variant="h3" center>Add your first vehicle</AppText>
-            <AppText color="textMuted" center>Use the IMEI and activation code printed on the tracker box.</AppText>
-            <PillButton title="Add vehicle" icon="add" onPress={() => router.push('/add-tracker')} style={{ alignSelf: 'stretch' }} />
+            <Text style={[styles.stateTitle, { color: c.text, fontSize: 20 }]}>Add your first vehicle</Text>
+            <PillButton title="Add vehicle" onPress={() => router.push('/add-tracker')} style={{ alignSelf: 'stretch', marginTop: 4 }} />
           </View>
         </View>
       ) : (
@@ -189,64 +192,42 @@ export default function Home() {
           data={visible}
           keyExtractor={(r) => r.d.id}
           ListHeaderComponent={header}
-          ListHeaderComponentStyle={{ marginBottom: space.md }}
-          contentContainerStyle={{ padding: space.lg, paddingTop: space.sm, gap: space.md }}
-          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
-          ListEmptyComponent={<AppText color="textMuted" center style={{ padding: space.xl }}>No vehicles match.</AppText>}
-          renderItem={({ item }) => <VehicleCard device={item.d} state={item.s} group={item.g} />}
+          ListHeaderComponentStyle={{ marginBottom: 8 }}
+          contentContainerStyle={{ paddingHorizontal: PAD, paddingTop: 12, paddingBottom: 24, gap: 4 }}
+          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} colors={[c.text]} />}
+          ListEmptyComponent={
+            <Pressable onPress={() => { closeSearch(); setFilter('all'); }} accessibilityRole="button" style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <Text style={{ fontFamily: fonts.bold, fontSize: 16, color: c.text, minHeight: 44, textAlignVertical: 'center' }}>No match — show all</Text>
+            </Pressable>
+          }
+          renderItem={({ item }) => <VehicleRow row={item} selected={item.d.id === selectedId} dueDays={dueDays.get(item.d.id)} onPress={() => open(item.d.id)} />}
         />
       )}
 
-      <MapFullscreen visible={full} from={cardRect} markers={markers} onClose={() => setFull(false)} onMarkerPress={(id) => { setFull(false); router.push(`/device/${id}`); }} />
-
-      {/* Sort menu */}
-      <Modal visible={sortOpen} transparent animationType="fade" onRequestClose={() => setSortOpen(false)}>
-        <Pressable style={[styles.backdrop, { backgroundColor: c.overlay }]} onPress={() => setSortOpen(false)}>
-          <View style={[styles.sheet, { backgroundColor: c.surface }]}>
-            <AppText variant="h3">Sort by</AppText>
-            {SORTS.map(([key, label]) => (
-              <Pressable key={key} onPress={() => { setSort(key); setSortOpen(false); }} style={styles.sheetRow} accessibilityRole="radio" accessibilityState={{ selected: sort === key }}>
-                <Ionicons name={sort === key ? 'radio-button-on' : 'radio-button-off'} size={20} color={sort === key ? c.text : c.textMuted} />
-                <AppText>{label}</AppText>
-              </Pressable>
-            ))}
-          </View>
-        </Pressable>
-      </Modal>
-
-      {/* Service: vehicles due, and support */}
-      <Sheet visible={serviceOpen} onClose={() => setServiceOpen(false)} title="Service & support">
-        {serviceList.length === 0 ? (
-          <AppText color="textMuted">No service dates yet. Add a service record on a vehicle's Service tab to get reminders.</AppText>
-        ) : (
-          serviceList.slice(0, 8).map(({ d, days }) => (
-            <Pressable key={d.id} onPress={() => { setServiceOpen(false); router.push(`/device/${d.id}?section=service`); }} style={styles.sheetRow} accessibilityRole="button">
-              <VehicleTile type={d.icon} color={d.color} width={52} height={40} />
-              <View style={{ flex: 1 }}>
-                <Plate value={plateOrName(d)} size={15} />
-                <AppText variant="small" color={days < 0 ? 'danger' : 'textMuted'}>{dueText(days)}</AppText>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={c.textMuted} />
+      {/* Sort */}
+      <Sheet visible={sheet === 'sort'} onClose={() => setSheet(null)} title="Sort vehicles">
+        <View>
+          {SORTS.map(([key, label]) => (
+            <Pressable key={key} onPress={() => { setSort(key); setSheet(null); }} accessibilityRole="radio" accessibilityState={{ selected: sort === key }} style={[styles.sortRow, { borderBottomColor: c.border }]}>
+              <Text style={{ flex: 1, fontFamily: fonts.body, fontSize: 16, color: c.text }}>{label}</Text>
+              {sort === key && <DIcon name="check" size={20} strokeWidth={2.6} />}
             </Pressable>
-          ))
-        )}
-        <PillButton title="Contact support" icon="chatbubbles-outline" variant="secondary" onPress={() => { setServiceOpen(false); router.push('/contact'); }} />
+          ))}
+        </View>
       </Sheet>
 
-      {/* Choose a vehicle to share */}
-      <Modal visible={shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>
-        <Pressable style={[styles.backdrop, { backgroundColor: c.overlay }]} onPress={() => setShareOpen(false)}>
-          <View style={[styles.sheet, { backgroundColor: c.surface }]}>
-            <AppText variant="h3">Share which vehicle?</AppText>
-            {devices.map((d) => (
-              <Pressable key={d.id} onPress={() => { setShareOpen(false); router.push(`/device/${d.id}?tab=sharing`); }} style={styles.sheetRow}>
-                <VehicleArt type={d.icon} size={32} />
-                <Plate value={plateOrName(d)} size={16} />
-              </Pressable>
+      {/* Service due */}
+      <Sheet visible={sheet === 'service'} onClose={() => setSheet(null)} title="Service due">
+        {serviceList.length === 0 ? (
+          <Text style={[type.small, { color: c.textMuted }]}>No service dates yet. Add a service record on a vehicle's Service tab to get reminders.</Text>
+        ) : (
+          <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: 6 }}>
+            {serviceList.map(({ d, days }) => (
+              <ServiceRow key={d.id} device={d} days={days} onPress={() => { setSheet(null); selectVehicle(d.id); router.push(`/device/${d.id}?section=service`); }} />
             ))}
-          </View>
-        </Pressable>
-      </Modal>
+          </ScrollView>
+        )}
+      </Sheet>
     </SafeAreaView>
   );
 }
@@ -254,103 +235,141 @@ export default function Home() {
 function Quick({ icon, label, onPress, badge }: { icon: DesignIconName; label: string; onPress: () => void; badge?: number }) {
   const c = useColors();
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={badge ? `${label}, ${badge} due` : label} onPress={onPress} style={({ pressed }) => [styles.quick, { backgroundColor: c.surface, opacity: pressed ? 0.8 : 1 }]}>
-      <DIcon name={icon} size={22} strokeWidth={1.9} />
-      {badge ? (
-        <View style={[styles.qBadge, { backgroundColor: c.accent, borderColor: c.bg }]}>
-          <Text style={{ fontSize: 11, fontWeight: '700', color: c.onAccent }}>{badge}</Text>
-        </View>
-      ) : null}
-    </Pressable>
+    <View style={{ flex: 1, alignItems: 'center' }}>
+      <Pressable accessibilityRole="button" accessibilityLabel={badge ? `${label}, ${badge}` : label} onPress={onPress} style={({ pressed }) => [styles.quick, { backgroundColor: c.surface, opacity: pressed ? 0.8 : 1 }]}>
+        <DIcon name={icon} size={22} strokeWidth={1.9} />
+        {badge ? (
+          <View style={[styles.badge, { top: -2, right: -2, backgroundColor: c.accent, borderColor: c.bg }]}>
+            <Text style={[styles.badgeText, { color: c.onAccent }]}>{badge}</Text>
+          </View>
+        ) : null}
+      </Pressable>
+    </View>
   );
 }
 
-function FilterTab({ label, active, onPress, dot, hollow, a11y }: { label: string; active: boolean; onPress: () => void; dot?: string; hollow?: boolean; a11y?: string }) {
+function StatusTab({ label, a11y, active, onPress, group }: { label: string; a11y: string; active: boolean; onPress: () => void; group?: StatusGroup }) {
   const c = useColors();
   return (
-    <Pressable onPress={onPress} accessibilityRole="tab" accessibilityLabel={a11y ?? label} accessibilityState={{ selected: active }} style={styles.filterTab}>
-      <View style={styles.filterInner}>
-        {dot && <View style={[styles.dot, hollow ? { borderWidth: 1.5, borderColor: dot } : { backgroundColor: dot }]} />}
-        <AppText variant={active ? 'bodyStrong' : 'body'} color={active ? 'text' : 'textMuted'}>{label}</AppText>
-      </View>
-      <View style={{ height: 3, borderRadius: 2, backgroundColor: active ? c.accent : 'transparent', marginTop: 8 }} />
+    <Pressable onPress={onPress} accessibilityRole="tab" accessibilityLabel={a11y} accessibilityState={{ selected: active }} style={[styles.tab, { borderBottomColor: active ? c.accent : 'transparent' }]}>
+      {group && <Dot group={group} c={c} />}
+      <Text maxFontSizeMultiplier={1.2} style={{ fontFamily: active ? fonts.bold : fonts.medium, fontSize: 15, lineHeight: 20, color: active ? c.text : c.textMuted }}>{label}</Text>
     </Pressable>
   );
 }
 
-/** Picture · number plate · driver + km today · speed + last update. */
-function VehicleCard({ device, state, group }: { device: Device; state: Live; group: StatusGroup }) {
+function Dot({ group, c }: { group: StatusGroup; c: Palette }) {
+  const col = statusColor(group, c);
+  return <View style={[styles.dot, group === 'offline' ? { borderWidth: 1.5, borderColor: col } : { backgroundColor: col }]} />;
+}
+
+/** Picture (+ service warning) · plate · driver + km today · speed + last update. */
+function VehicleRow({ row: { d, s, g }, selected, dueDays, onPress }: { row: Row; selected: boolean; dueDays?: number; onPress: () => void }) {
   const c = useColors();
-  const offline = group === 'offline';
-  const driver = device.driverName || (device.registrationNumber ? device.name : null) || 'No driver set';
-  const updated = state.lastSeenAt ? timeAgo(state.lastSeenAt) : 'never';
+  const never = !s.lastSeenAt;
+  const hasSpeed = g === 'moving' || g === 'stopped';
+  const speed = hasSpeed ? String(s.speed ?? 0) : never ? 'Waiting' : STATUS_LABEL[g];
+  const ago = agoText(s.lastSeenAt);
+  const driver = d.mainDriver?.name || d.driverName || null;
+  const km = `${Math.round(d.todayKm ?? 0)} km`;
+  const svcWarn = dueDays != null && dueDays <= DUE_SOON_DAYS;
+  const overdue = dueDays != null && dueDays < 0;
   return (
     <Pressable
-      onPress={() => router.push(`/device/${device.id}`)}
+      onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${plateOrName(device)}, driver ${driver}, ${offline ? 'offline' : `${state.speed ?? 0} kilometres per hour`}`}
-      style={({ pressed }) => [styles.card, { backgroundColor: pressed ? c.surface : c.surface, borderColor: pressed ? c.accent : c.border }]}
+      accessibilityLabel={`${plateOrName(d)}, ${driver ? `driver ${driver}` : 'no driver'}, ${hasSpeed ? `${s.speed ?? 0} kilometres per hour` : speed}, ${ago}${svcWarn ? `, service ${dueText(dueDays!).toLowerCase()}` : ''}`}
+      style={({ pressed }) => [styles.row, { backgroundColor: selected || pressed ? c.surface : 'transparent' }]}
     >
-      <VehicleTile type={device.icon} color={device.color} width={72} height={60} dimmed={offline} />
-      <View style={{ flex: 1, gap: 6, minWidth: 0 }}>
-        <Plate value={device.registrationNumber || deviceName(device)} />
-        <View style={styles.driverRow}>
-          {device.mainDriver ? (
-            <DriverAvatar driver={device.mainDriver} size={20} />
+      <View>
+        <VehicleTile type={d.icon} color={d.color} width={74} height={52} dimmed={g === 'offline'} style={{ borderRadius: 16 }} />
+        {svcWarn && (
+          <View style={[styles.svcBadge, { borderColor: c.bg, backgroundColor: overdue ? c.dangerSoft : 'rgba(234,170,0,0.35)' }]}>
+            <DIcon name="wrench" size={13} strokeWidth={2.2} color={overdue ? c.danger : c.text} />
+          </View>
+        )}
+      </View>
+      <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+        <Plate value={plateOrName(d)} size={16} />
+        <View style={styles.inline}>
+          {driver ? (
+            <>
+              {d.mainDriver ? (
+                <DriverAvatar driver={d.mainDriver} size={20} />
+              ) : (
+                <View style={[styles.avatar, { backgroundColor: c.dark ? c.surface2 : 'rgba(234,170,0,0.25)' }]}>
+                  <Text style={{ fontSize: 11, fontFamily: fonts.bold, color: c.text }}>{driver.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+              <Text numberOfLines={1} style={[styles.meta, { color: c.textMuted, flexShrink: 1 }]}>{driver.split(' ')[0]}</Text>
+            </>
           ) : (
-            <View style={[styles.avatar, { backgroundColor: c.dark ? c.surface2 : 'rgba(234,170,0,0.25)' }]}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: c.text }}>{driver.charAt(0).toUpperCase()}</Text>
-            </View>
+            <Text style={[styles.meta, { fontFamily: fonts.bold, color: c.text }]}>No driver</Text>
           )}
-          <AppText variant="small" color="textMuted" numberOfLines={1} style={{ flexShrink: 1 }}>
-            {driver} · {device.todayKm ?? 0} km
-          </AppText>
+          <Text style={[styles.meta, { color: c.textMuted }]}>· {km}</Text>
         </View>
       </View>
-      <View style={{ alignItems: 'flex-end', gap: 6 }}>
-        {offline ? (
-          <AppText variant="bodyStrong" color="textMuted">Offline</AppText>
-        ) : (
-          <Text maxFontSizeMultiplier={1.2}>
-            <Text style={[type.h3, { color: c.text }]}>{state.speed ?? 0}</Text>
-            <Text style={[type.caption, { color: c.textMuted }]}> km/h</Text>
-          </Text>
-        )}
-        <View style={styles.driverRow}>
-          <View style={[styles.dot, offline ? { borderWidth: 1.5, borderColor: c.offline } : { backgroundColor: statusColor(group, c) }]} />
-          <AppText variant="caption" color={offline ? 'textMuted' : 'text'}>{updated === 'just now' ? 'Just now' : updated}</AppText>
+      <View style={{ alignItems: 'flex-end', gap: 4 }}>
+        <Text maxFontSizeMultiplier={1.2} numberOfLines={1}>
+          <Text style={{ fontFamily: fonts.bold, fontSize: hasSpeed ? 17 : 12, color: hasSpeed || g === 'nogps' ? c.text : c.textMuted }}>{speed}</Text>
+          {hasSpeed ? <Text style={{ fontFamily: fonts.medium, fontSize: 12, color: c.textMuted }}> km/h</Text> : null}
+        </Text>
+        <View style={styles.inline}>
+          <Dot group={g} c={c} />
+          <Text numberOfLines={1} style={[styles.meta, { color: hasSpeed ? c.success : g === 'nogps' ? c.text : c.textMuted }]}>{ago}</Text>
         </View>
       </View>
     </Pressable>
   );
 }
 
-const shadow = { elevation: 2, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } };
+/** Service sheet row: picture · plate · when it's due · how close (bar). */
+function ServiceRow({ device, days, onPress }: { device: Device; days: number; onPress: () => void }) {
+  const c = useColors();
+  const col = days < 0 ? c.danger : days <= DUE_SOON_DAYS ? c.accent : c.success;
+  const fill = days < 0 ? 1 : Math.max(0, Math.min(1, (SERVICE_CYCLE_DAYS - days) / SERVICE_CYCLE_DAYS));
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${plateOrName(device)}, service ${dueText(days).toLowerCase()}`} style={[styles.svcRow, { borderBottomColor: c.border }]}>
+      <VehicleTile type={device.icon} color={device.color} width={56} height={40} style={{ borderRadius: 12 }} />
+      <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+          <Plate value={plateOrName(device)} size={14} />
+          <Text style={{ fontFamily: fonts.bold, fontSize: 13, color: days < 0 ? c.danger : c.text }}>{dueText(days)}</Text>
+        </View>
+        <View style={{ height: 6, borderRadius: 3, backgroundColor: c.surface2, overflow: 'hidden' }}>
+          <View style={{ height: '100%', width: `${Math.round(fill * 100)}%`, borderRadius: 3, backgroundColor: col }} />
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+const shadow = { elevation: 3, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } };
 const styles = StyleSheet.create({
-  topbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: space.xs },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  logoMark: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  bell: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', ...shadow },
-  badge: { position: 'absolute', top: 4, right: 4, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
-  badgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  mapCard: { height: 190, borderRadius: radius.lg, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
-  fullBtn: { position: 'absolute', right: 12, bottom: 30, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', ...shadow },
-  actions: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: space.sm },
-  quick: { width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', ...shadow },
-  qBadge: { position: 'absolute', top: -2, right: -2, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
-  filterBar: { flexDirection: 'row', alignItems: 'flex-end', borderBottomWidth: StyleSheet.hairlineWidth },
-  filters: { flex: 1, flexDirection: 'row', gap: space.md },
-  filterTab: { paddingTop: space.xs },
-  filterInner: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 2 },
-  barIcon: { paddingHorizontal: 8, paddingBottom: 10 },
-  dot: { width: 9, height: 9, borderRadius: 5 },
-  search: { flexDirection: 'row', alignItems: 'center', gap: space.sm, height: 46, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: space.md },
-  card: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.lg, borderWidth: 1, ...shadow },
-  driverRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  topbar: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: PAD, paddingTop: 18, paddingBottom: 6 },
+  logoMark: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  bell: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  badge: { position: 'absolute', minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
+  badgeText: { fontSize: 11, lineHeight: 13, fontFamily: fonts.bold },
+  mapCard: { height: 150, borderRadius: 22, overflow: 'hidden' },
+  expand: { position: 'absolute', right: 10, bottom: 10, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', ...shadow },
+  actions: { flexDirection: 'row', gap: 8 },
+  quick: { width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center' },
+  filterBar: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 18, marginHorizontal: -PAD, paddingLeft: PAD, paddingRight: 10, borderBottomWidth: 1 },
+  tab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 12, paddingBottom: 8.5, paddingHorizontal: 2, borderBottomWidth: 2.5 },
+  barBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  sortDot: { position: 'absolute', top: 9, right: 9, width: 8, height: 8, borderRadius: 4 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 46, marginTop: 14, borderRadius: 23, paddingLeft: 16 },
+  searchX: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, marginHorizontal: -10, borderRadius: 20 },
+  svcBadge: { position: 'absolute', right: -5, bottom: -5, width: 24, height: 24, borderRadius: 12, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  inline: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  meta: { fontFamily: fonts.body, fontSize: 13, lineHeight: 18 },
   avatar: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  backdrop: { flex: 1, justifyContent: 'flex-end' },
-  sheet: { padding: space.lg, gap: space.sm, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingBottom: space.xxl },
-  sheetRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 48 },
-  state: { padding: space.lg, paddingTop: space.sm, gap: space.xl },
-  stateBody: { alignItems: 'center', gap: space.md, paddingTop: space.xxl, paddingHorizontal: space.md },
+  sortRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 50, borderBottomWidth: 1 },
+  svcRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, borderBottomWidth: 1 },
+  state: { paddingHorizontal: PAD, paddingTop: 12, gap: 18 },
+  stateBody: { alignItems: 'center', gap: 10, paddingTop: 20, paddingHorizontal: 8 },
+  stateTitle: { fontFamily: fonts.bold, fontSize: 18, textAlign: 'center' },
 });

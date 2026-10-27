@@ -13,13 +13,13 @@ import { useTrackers } from '@/live/TrackersProvider';
 import { useAddress } from '@/lib/address';
 import { usePref } from '@/lib/prefs';
 import { timeAgo } from '@/lib/format';
-import { STATUS_LABEL, statusColor, statusGroup, type StatusGroup } from '@/lib/vehicleStatus';
+import { STATUS_LABEL, STATUS_ORDER as ORDER, statusColor, statusGroup } from '@/lib/vehicleStatus';
+import { selectVehicle, useSelectedVehicle } from '@/lib/selectedVehicle';
 import { AppMap, type AppMapHandle, type LatLon } from '@/components/Map';
 import { Chip, PillButton, Plate, RoundButton, StatusDot, VehicleTile } from '@/components/kit';
 import { Button, EmptyState, Loading } from '@/components/ui';
 import { radius, shadow, space, type, useColors } from '@/theme';
 
-const ORDER: Record<StatusGroup, number> = { moving: 0, idle: 1, stopped: 2, offline: 3 };
 
 export default function MapTab() {
   const c = useColors();
@@ -28,7 +28,8 @@ export default function MapTab() {
   const platesOnMap = usePref('platesOnMap');
   const map = useRef<AppMapHandle>(null);
   const chips = useRef<ComponentRef<typeof ScrollView>>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedId = useSelectedVehicle();
+  const setSelectedId = selectVehicle;
   const [fitCount, setFitCount] = useState(0);
   const [full, setFull] = useState(false);
   const [sheetH, setSheetH] = useState(0);

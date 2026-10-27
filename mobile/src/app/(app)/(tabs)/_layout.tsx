@@ -1,25 +1,37 @@
-// Bottom bar: Home · Map · Trips · Profile. The active tab sits in a soft
-// marigold pill. Alerts open from the bell at the top of Home.
+// Bottom bar: Home · Map · Trips · Profile, with the design's line icons.
+// The active tab sits in a soft marigold pill. Alerts open from the bell at
+// the top of Home.
 import { Tabs } from 'expo-router/tabs';
-import { Ionicons } from '@expo/vector-icons';
-import { View } from 'react-native';
+import { Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { TrackersProvider } from '@/live/TrackersProvider';
+import { DIcon, type DesignIconName } from '@/components/DesignIcon';
 import { fonts, useColors } from '@/theme';
 
-type IconName = keyof typeof Ionicons.glyphMap;
-
-function TabIcon({ outline, filled }: { outline: IconName; filled: IconName }) {
-  return ({ focused, color }: { focused: boolean; color: unknown }) => <PillIcon name={focused ? filled : outline} focused={focused} color={color as string} />;
+function TabIcon(name: DesignIconName) {
+  return ({ focused }: { focused: boolean }) => <PillIcon name={name} focused={focused} />;
 }
 
-function PillIcon({ name, focused, color }: { name: IconName; focused: boolean; color: string }) {
+function PillIcon({ name, focused }: { name: DesignIconName; focused: boolean }) {
   const c = useColors();
   return (
-    <View style={{ width: 56, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: focused ? (c.dark ? 'rgba(234,170,0,0.22)' : 'rgba(234,170,0,0.24)') : 'transparent' }}>
-      <Ionicons name={name} size={22} color={color} />
+    <View style={{ width: 60, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: focused ? (c.dark ? 'rgba(234,170,0,0.22)' : 'rgba(234,170,0,0.24)') : 'transparent' }}>
+      <DIcon name={name} size={24} strokeWidth={1.9} color={focused ? c.text : c.textMuted} />
     </View>
+  );
+}
+
+function TabLabel(title: string) {
+  return ({ focused }: { focused: boolean }) => <Label title={title} focused={focused} />;
+}
+
+function Label({ title, focused }: { title: string; focused: boolean }) {
+  const c = useColors();
+  return (
+    <Text maxFontSizeMultiplier={1.2} style={{ fontFamily: focused ? fonts.bold : fonts.medium, fontSize: 12, lineHeight: 14, marginTop: 4, color: focused ? c.text : c.textMuted }}>
+      {title}
+    </Text>
   );
 }
 
@@ -32,23 +44,21 @@ export default function TabsLayout() {
         screenListeners={{ tabPress: () => Haptics.selectionAsync().catch(() => {}) }}
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: c.text,
-          tabBarInactiveTintColor: c.textMuted,
-          tabBarLabelStyle: { fontFamily: fonts.bold, fontSize: 12, marginTop: 2 },
           tabBarStyle: {
             backgroundColor: c.surface,
             borderTopColor: c.border,
-            height: 64 + insets.bottom,
-            paddingTop: 8,
-            paddingBottom: insets.bottom + 6,
+            height: 70 + insets.bottom,
+            paddingTop: 6,
+            paddingBottom: insets.bottom + 8,
+            paddingHorizontal: 8,
           },
           sceneStyle: { backgroundColor: c.bg },
         }}
       >
-        <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: TabIcon({ outline: 'home-outline', filled: 'home' }) }} />
-        <Tabs.Screen name="map" options={{ title: 'Map', tabBarIcon: TabIcon({ outline: 'map-outline', filled: 'map' }) }} />
-        <Tabs.Screen name="trips" options={{ title: 'Trips', tabBarIcon: TabIcon({ outline: 'git-branch-outline', filled: 'git-branch' }) }} />
-        <Tabs.Screen name="account" options={{ title: 'Profile', tabBarIcon: TabIcon({ outline: 'person-outline', filled: 'person' }) }} />
+        <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: TabIcon('home'), tabBarLabel: TabLabel('Home') }} />
+        <Tabs.Screen name="map" options={{ title: 'Map', tabBarIcon: TabIcon('map'), tabBarLabel: TabLabel('Map') }} />
+        <Tabs.Screen name="trips" options={{ title: 'Trips', tabBarIcon: TabIcon('trips'), tabBarLabel: TabLabel('Trips') }} />
+        <Tabs.Screen name="account" options={{ title: 'Profile', tabBarIcon: TabIcon('user'), tabBarLabel: TabLabel('Profile') }} />
       </Tabs>
     </TrackersProvider>
   );

@@ -48,6 +48,8 @@ type Props = {
   selectedId?: string | null;
   /** Map padding (px) so fit/follow keep points clear of overlays like a bottom sheet. */
   padding?: { top?: number; bottom?: number; left?: number; right?: number };
+  /** Corner for the small map-credit button (default bottom-right). */
+  attribution?: 'bottom-left' | 'bottom-right';
   ref?: Ref<AppMapHandle>;
   style?: StyleProp<ViewStyle>;
 };
@@ -62,7 +64,7 @@ type WebViewHandle = { injectJavaScript: (js: string) => void };
 
 export function AppMap({
   markers = [], dots = [], route = [], routes = [], circles = [], polygons = [], follow, fitTo, fitKey,
-  initialCenter, initialZoom, onMarkerPress, onLongPress, showLabels, selectedId, padding, ref, style,
+  initialCenter, initialZoom, onMarkerPress, onLongPress, showLabels, selectedId, padding, attribution = 'bottom-right', ref, style,
 }: Props) {
   const c = useColors();
   const web = useRef<WebViewHandle>(null);
@@ -81,6 +83,7 @@ export function AppMap({
       center: initialCenter || INDIA,
       zoom: initialCenter ? initialZoom ?? 14 : 4,
       routeColor: c.dark ? brand.marigold : brand.aubergine,
+      attribution,
     }),
     [c.dark] // eslint-disable-line react-hooks/exhaustive-deps
   );
@@ -127,7 +130,7 @@ export function AppMap({
 
 const styles = StyleSheet.create({ box: { flex: 1, overflow: 'hidden' } });
 
-function buildHtml({ dark, center, zoom, routeColor }: { dark: boolean; center: LatLon; zoom: number; routeColor: string }) {
+function buildHtml({ dark, center, zoom, routeColor, attribution }: { dark: boolean; center: LatLon; zoom: number; routeColor: string; attribution: string }) {
   const style = dark ? 'https://tiles.openfreemap.org/styles/dark' : 'https://tiles.openfreemap.org/styles/liberty';
   return `<!doctype html><html><head>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
@@ -165,7 +168,8 @@ function buildHtml({ dark, center, zoom, routeColor }: { dark: boolean; center: 
   .maplibregl-ctrl-attrib{font-size:10px}
 </style></head><body><div id="map"></div><script>
 const post = (m) => window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(m));
-const map = new maplibregl.Map({ container: 'map', style: '${style}', center: [${center.lon}, ${center.lat}], zoom: ${zoom}, attributionControl: { compact: true }, pitchWithRotate: false });
+const map = new maplibregl.Map({ container: 'map', style: '${style}', center: [${center.lon}, ${center.lat}], zoom: ${zoom}, attributionControl: false, pitchWithRotate: false });
+map.addControl(new maplibregl.AttributionControl({ compact: true }), '${attribution}');
 map.touchPitch.disable();
 let ready = false, pending = null, lastFit = null, lastFollow = null, lastPad = null, longPressOn = false;
 const markerObjs = new Map(), dotObjs = new Map();

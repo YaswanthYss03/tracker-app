@@ -11,6 +11,16 @@ export function timeAgo(value?: string | null) {
   return `${Math.floor(s / 86400)} d ago`;
 }
 
+/** "Just now", "4 min ago", "5 h ago", "3 d ago" (Home vehicle list). */
+export function agoText(value?: string | null) {
+  if (!value) return 'No data yet';
+  const m = (Date.now() - new Date(value).getTime()) / 60_000;
+  if (m < 1) return 'Just now';
+  if (m < 60) return `${Math.round(m)} min ago`;
+  if (m < 1440) return `${Math.round(m / 60)} h ago`;
+  return `${Math.round(m / 1440)} d ago`;
+}
+
 export function dateTime(value?: string | null) {
   if (!value) return '—';
   return new Date(value).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
