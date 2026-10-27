@@ -4,6 +4,7 @@ import { Linking, ScrollView, StyleSheet, View } from 'react-native';
 import { api, errorText } from '@/api/client';
 import { dateTime, timeAgo } from '@/lib/format';
 import { AppMap } from '@/components/Map';
+import { ExpandableMap } from '@/components/ExpandableMap';
 import { AppText, Button, Card, ErrorBox, Row, StatCard } from '@/components/ui';
 import { radius, space, useColors } from '@/theme';
 import type { TabProps } from './types';
@@ -18,14 +19,14 @@ export function LiveTab({ device, state, isOwner }: TabProps) {
 
   return (
     <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.lg, paddingBottom: 48 }}>
-      <View style={[styles.mapBox, { borderColor: c.border }]}>
+      <ExpandableMap height={250}>
         <AppMap
           initialCenter={hasPos ? { lat: state.lat!, lon: state.lon! } : undefined}
           initialZoom={16}
           markers={hasPos ? [{ id: device.id, lat: state.lat!, lon: state.lon!, heading: state.heading, online: state.online, vehicle: device.icon }] : []}
           follow={hasPos ? { lat: state.lat!, lon: state.lon! } : null}
         />
-      </View>
+      </ExpandableMap>
 
       <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg, overflow: 'hidden' }}>
         {state.online && <GlowSweep />}

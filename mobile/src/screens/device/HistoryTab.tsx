@@ -8,6 +8,7 @@ import type { RoutePoint } from '@/api/types';
 import { isoDay, timeOnly } from '@/lib/format';
 import { brand } from '@/theme/colors';
 import { AppMap } from '@/components/Map';
+import { ExpandableMap } from '@/components/ExpandableMap';
 import { AppText, Card, EmptyState, IconButton, Loading, Row } from '@/components/ui';
 import { radius, space, useColors } from '@/theme';
 import type { TabProps } from './types';
@@ -77,7 +78,7 @@ export function HistoryTab({ device }: TabProps) {
         <IconButton icon="chevron-forward" label="Next day" onPress={() => day < isoDay() && shiftDay(1)} color={day >= isoDay() ? c.border : undefined} />
       </Card>
 
-      <View style={[styles.mapBox, { borderColor: c.border }]}>
+      <ExpandableMap height={230}>
         <AppMap
           route={coords}
           dots={[
@@ -88,7 +89,7 @@ export function HistoryTab({ device }: TabProps) {
           fitTo={coords}
           fitKey={`${day}-${coords.length}`}
         />
-      </View>
+      </ExpandableMap>
 
       {isLoading ? (
         <Loading />

@@ -19,6 +19,7 @@ import { Scrubber, SpeedGauge, usePlayback } from '@/components/tripParts';
 import { EmptyState, Loading } from '@/components/ui';
 import { brand } from '@/theme/colors';
 import { radius, shadow, space, type, useColors } from '@/theme';
+import { DIcon } from '@/components/DesignIcon';
 import { useResponsive } from '@/lib/responsive';
 
 const DAY = 86_400_000;
@@ -267,7 +268,9 @@ export default function Trips() {
             fitKey={`${selected.join(',')}-${winStart}-${winEnd}-${fit.length > 0}`}
           />
           <View style={styles.mapBtn}>
-            <RoundButton icon={big ? 'contract-outline' : 'expand-outline'} label={big ? 'Smaller map' : 'Bigger map'} onPress={() => setBig(!big)} size={40} iconSize={18} />
+            <Pressable onPress={() => setBig(!big)} accessibilityRole="button" accessibilityLabel={big ? 'Smaller map' : 'Bigger map'} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', elevation: 3 }}>
+              <DIcon name={big ? 'shrink' : 'expand'} size={16} strokeWidth={2.2} color="#202020" />
+            </Pressable>
           </View>
           {!loading && !hasRoute && (
             <View style={[styles.noRoute, { backgroundColor: c.surface }, shadow.card]}>

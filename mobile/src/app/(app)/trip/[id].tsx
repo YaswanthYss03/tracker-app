@@ -10,6 +10,7 @@ import { plateOrName, type Device, type RoutePoint, type Trip } from '@/api/type
 import { shortAddress, useAddress } from '@/lib/address';
 import { duration, km, timeOnly } from '@/lib/format';
 import { AppMap } from '@/components/Map';
+import { ExpandableMap } from '@/components/ExpandableMap';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import { Card, Plate, RoundButton, Stat, TopBar } from '@/components/kit';
 import { Scrubber, SpeedChart, usePlayback } from '@/components/tripParts';
@@ -79,7 +80,7 @@ export default function TripScreen() {
         }
       />
       <ScrollView contentContainerStyle={{ padding: space.lg, paddingTop: space.xs, gap: space.lg, paddingBottom: 48 }}>
-        <View style={[styles.map, { backgroundColor: c.surface2 }]}>
+        <ExpandableMap height={230}>
           <AppMap
             initialCenter={coords[0]}
             initialZoom={13}
@@ -92,7 +93,7 @@ export default function TripScreen() {
             fitTo={coords}
             fitKey={`${id}-${coords.length}`}
           />
-        </View>
+        </ExpandableMap>
         <Scrubber
           value={progress}
           onChange={(v) => { setPlaying(false); setProgress(v); }}

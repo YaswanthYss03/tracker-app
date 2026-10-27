@@ -7,6 +7,7 @@ import { api, errorText } from '@/api/client';
 import type { Geofence } from '@/api/types';
 import { brand } from '@/theme/colors';
 import { AppMap } from '@/components/Map';
+import { ExpandableMap } from '@/components/ExpandableMap';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { AppText, Button, Card, ErrorBox, Field, IconButton, Row } from '@/components/ui';
 import { fonts } from '@/theme';
@@ -53,7 +54,7 @@ export function GeofencesTab({ device, state, isOwner }: TabProps) {
 
   return (
     <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 8, gap: 14, paddingBottom: 24 }}>
-      <View style={[styles.mapBox, { borderColor: draft ? c.accent : c.border, borderWidth: draft ? 2 : StyleSheet.hairlineWidth }]}>
+      <ExpandableMap height={190}>
         <AppMap
           initialCenter={hasPos ? { lat: state.lat!, lon: state.lon! } : undefined}
           initialZoom={14}
@@ -70,7 +71,7 @@ export function GeofencesTab({ device, state, isOwner }: TabProps) {
           fitKey={fences.length}
           onLongPress={draft ? ({ lat, lon }) => setDraft({ ...draft, lat, lon }) : undefined}
         />
-      </View>
+      </ExpandableMap>
 
       {isOwner && !draft && (
         <Button title="Add area" icon="add" small onPress={() => setDraft({ lat: state.lat, lon: state.lon, radiusM: 200, name: '' })} />

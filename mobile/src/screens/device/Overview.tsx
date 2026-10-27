@@ -3,6 +3,7 @@
 // Tracker / More tabs. More holds everything else (trips, report, alerts,
 // geofences, sharing, navigate, settings).
 import { useState } from 'react';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { LayoutAnimation, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -147,11 +148,11 @@ export function Overview({ device, state, isOwner }: TabProps) {
 
             {section === 'more' && (
               <View style={styles.grid}>
+                <MoreTile icon="play-circle-outline" label="Replay a day" onPress={() => open('history')} />
                 <MoreTile icon="git-branch-outline" label="Trips" onPress={() => open('trips')} />
                 <MoreTile icon="bar-chart-outline" label="Report" onPress={() => open('report')} />
                 <MoreTile icon="notifications-outline" label="Alerts" onPress={() => open('alerts')} />
                 <MoreTile icon="shapes-outline" label="Geofences" onPress={() => open('geofences')} />
-                {isOwner && <MoreTile icon="people-outline" label="Share with family" onPress={() => open('sharing')} />}
                 <MoreTile icon="share-social-outline" label="Share" onPress={() => setShareOpen(true)} />
                 <MoreTile
                   icon="navigate-outline"
@@ -200,6 +201,9 @@ function DriverSection({ device, canEdit }: { device: TabProps['device']; canEdi
   const { data: drivers = [] } = useDrivers();
   const [pick, setPick] = useState<Slot | null>(null);
   const [conflict, setConflict] = useState<DriverRow | null>(null);
+  // Swap button: the arrows make a U-turn (a half flip) each time it is tapped.
+  const turn = useSharedValue(0);
+  const turnStyle = useAnimatedStyle(() => ({ transform: [{ perspective: 260 }, { rotateX: `${turn.value}deg` }] }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const main = device.mainDriver ?? null;
@@ -267,12 +271,18 @@ function DriverSection({ device, canEdit }: { device: TabProps['device']; canEdi
         <View style={styles.swapWrap} pointerEvents="box-none">
           <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Pressable
-            onPress={() => !busy && run(async () => { await patch(device.id, { mainDriverId: backup.id, backupDriverId: main.id }); })}
+            onPress={() => {
+              if (busy) return;
+              turn.value = withTiming(turn.value + 180, { duration: 450, easing: Easing.inOut(Easing.cubic) });
+              run(async () => { await patch(device.id, { mainDriverId: backup.id, backupDriverId: main.id }); });
+            }}
             accessibilityRole="button"
             accessibilityLabel="Swap main and backup driver"
             style={[styles.swapBtn, { backgroundColor: c.dark ? c.surface : '#FFFFFF', borderColor: c.bg }]}
           >
-            <DIcon name="swapV" size={14} strokeWidth={2.2} color={c.accent} />
+            <Animated.View style={turnStyle}>
+              <DIcon name="swapV" size={14} strokeWidth={2.2} color={c.accent} />
+            </Animated.View>
           </Pressable>
         </View>
       )}

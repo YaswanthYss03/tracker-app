@@ -1,24 +1,15 @@
 // Time zones for the Settings picker, each shown as "UTC+5:30 · India · 3:42 pm".
-export const TIMEZONES: [string, string][] = [
-  ['Asia/Kolkata', 'India'],
-  ['Asia/Kathmandu', 'Nepal'],
-  ['Asia/Colombo', 'Sri Lanka'],
-  ['Asia/Dhaka', 'Bangladesh'],
-  ['Asia/Dubai', 'Dubai'],
-  ['Asia/Riyadh', 'Saudi Arabia'],
-  ['Asia/Singapore', 'Singapore'],
-  ['Asia/Kuala_Lumpur', 'Malaysia'],
-  ['Asia/Bangkok', 'Thailand'],
-  ['Asia/Hong_Kong', 'Hong Kong'],
-  ['Asia/Tokyo', 'Japan'],
-  ['Australia/Sydney', 'Sydney'],
-  ['Europe/London', 'London'],
-  ['Europe/Paris', 'Paris'],
-  ['UTC', 'UTC'],
-  ['America/New_York', 'New York'],
-  ['America/Chicago', 'Chicago'],
-  ['America/Los_Angeles', 'Los Angeles'],
-];
+import { ALL_ZONES } from './timezoneData';
+
+export type Zone = { zone: string; country: string; city: string };
+
+const cityOf = (zone: string) => zone.split('/').slice(1).join(' / ').replace(/_/g, ' ') || zone;
+
+/** Every country's time zones, A–Z by country (India first for convenience is handled by the picker). */
+export const ZONES: Zone[] = ALL_ZONES.map(([zone, country]) => ({ zone, country, city: cityOf(zone) }));
+const byZone = new Map(ZONES.map((z) => [z.zone, z]));
+const perCountry = new Map<string, number>();
+for (const z of ZONES) perCountry.set(z.country, (perCountry.get(z.country) ?? 0) + 1);
 
 /** Minutes the zone is ahead of UTC right now (5:30 -> 330). */
 export function offsetMinutes(timeZone: string, at = new Date()): number {
@@ -50,6 +41,9 @@ export function clockIn(timeZone: string, at = new Date()) {
   }
 }
 
+/** "India", or "United States · New York" when the country has several zones. */
 export function zoneName(timeZone: string) {
-  return TIMEZONES.find(([z]) => z === timeZone)?.[1] ?? timeZone.split('/').pop()!.replace(/_/g, ' ');
+  const z = byZone.get(timeZone);
+  if (!z) return cityOf(timeZone);
+  return (perCountry.get(z.country) ?? 1) > 1 ? `${z.country} · ${z.city}` : z.country;
 }
