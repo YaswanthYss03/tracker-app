@@ -1,6 +1,6 @@
 // Colours of the Home design (light): grey page, white cards, red accent.
 // Dark mode keeps the app's own dark palette.
-import { dark, type Palette } from '@/theme/colors';
+import type { Palette } from '@/theme/colors';
 import { useColors } from '@/theme';
 
 export const designLight: Palette & { green: string; greenText: string; amber: string; amberText: string; track: string } = {
@@ -27,9 +27,9 @@ export const designLight: Palette & { green: string; greenText: string; amber: s
   track: '#EDEDED',
 };
 
-export const designDark = { ...dark, green: dark.success, greenText: dark.success, amber: '#EAAA00', amberText: '#EAAA00', track: dark.surface2 };
 
 export function useHomeColors() {
   const c = useColors();
-  return c.dark ? designDark : designLight;
+  if (!c.dark) return designLight;
+  return { ...c, green: c.success, greenText: c.success, amber: '#EAAA00', amberText: '#EAAA00', track: c.surface2 };
 }
