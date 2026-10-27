@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BottomNav } from '@/components/BottomNav';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { api, errorText } from '@/api/client';
@@ -106,7 +105,6 @@ export default function DeviceScreen() {
         {tab === 'settings' && <SettingsTab {...props} />}
       </View>
       {banner && <AlertBanner alert={banner} onClose={() => setBanner(null)} />}
-      <BottomNav active="home" />
     </SafeAreaView>
   );
 }

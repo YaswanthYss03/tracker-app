@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BottomNav } from '@/components/BottomNav';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { api, errorText } from '@/api/client';
@@ -138,7 +137,6 @@ export default function TripScreen() {
           </Card>
         )}
       </ScrollView>
-      <BottomNav active="trips" />
     </SafeAreaView>
   );
 }

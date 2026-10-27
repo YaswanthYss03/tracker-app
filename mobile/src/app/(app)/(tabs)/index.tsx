@@ -20,6 +20,7 @@ import { Banner, PillButton, Plate, VehicleTile } from '@/components/kit';
 import type { useHomeColors } from '@/theme/designHome';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import { DIcon, type DesignIconName } from '@/components/DesignIcon';
+import { DesignSheet } from '@/components/DesignSheet';
 import { fonts, type } from '@/theme';
 import { useHomeColors as useColors } from '@/theme/designHome';
 
@@ -235,20 +236,6 @@ export default function Home() {
         )}
       </DesignSheet>
     </SafeAreaView>
-  );
-}
-
-function DesignSheet({ visible, onClose, title, children }: { visible: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
-  const c = useColors();
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} onPress={onClose} accessibilityLabel="Close" />
-      <View style={{ marginTop: 'auto', backgroundColor: c.dark ? c.surface : '#FFFFFF', borderTopLeftRadius: 26, borderTopRightRadius: 26, paddingTop: 8, paddingHorizontal: 20, paddingBottom: 24, gap: 12, maxHeight: '80%' }}>
-        <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: '#D6D6D6' }} />
-        <Text style={{ fontFamily: fonts.bold, fontSize: 20, color: c.text }}>{title}</Text>
-        {children}
-      </View>
-    </Modal>
   );
 }
 

@@ -1,7 +1,6 @@
 // Drivers: a grid of cards (picture, name, the plates they drive). + adds one.
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BottomNav } from '@/components/BottomNav';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { errorText } from '@/api/client';
@@ -68,7 +67,6 @@ export default function Drivers() {
           }}
         />
       )}
-      <BottomNav active="home" />
     </SafeAreaView>
   );
 }

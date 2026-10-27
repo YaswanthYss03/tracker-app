@@ -1,7 +1,6 @@
 // Vehicles: every vehicle with its picture, plate, name and colour. ✎ edits, + adds.
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BottomNav } from '@/components/BottomNav';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
@@ -69,7 +68,6 @@ export default function Vehicles() {
           }}
         />
       )}
-      <BottomNav active="profile" />
     </SafeAreaView>
   );
 }
