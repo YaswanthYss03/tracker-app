@@ -17,12 +17,14 @@ import { VehicleTile } from '@/components/kit';
 import { DIcon, type DesignIconName } from '@/components/DesignIcon';
 import { Button, EmptyState, Loading } from '@/components/ui';
 import { fonts } from '@/theme';
+import { useResponsive } from '@/lib/responsive';
 import { useHomeColors as useColors } from '@/theme/designHome';
 
 type HC = ReturnType<typeof useColors>;
 
 export default function MapTab() {
   const c = useColors();
+  const r = useResponsive();
   const insets = useSafeAreaInsets();
   const { devices, stateOf, isLoading } = useTrackers();
   const platesOnMap = usePref('platesOnMap');
@@ -134,11 +136,11 @@ export default function MapTab() {
         </ScrollView>
 
         <View style={styles.vehicle}>
-          <VehicleTile type={sel.d.icon} color={sel.d.color} width={74} height={52} dimmed={g === 'offline'} deep style={{ borderRadius: 16 }} />
-          <Text numberOfLines={1} maxFontSizeMultiplier={1.2} style={{ flex: 1, minWidth: 0, fontFamily: fonts.mono, fontSize: 17, color: c.text }}>{plateOrName(sel.d)}</Text>
+          <VehicleTile type={sel.d.icon} color={sel.d.color} width={r.small ? 62 : 74} height={r.small ? 46 : 52} dimmed={g === 'offline'} deep style={{ borderRadius: r.small ? 14 : 16 }} />
+          <Text numberOfLines={1} maxFontSizeMultiplier={1.2} style={{ flex: 1, minWidth: 0, fontFamily: fonts.mono, fontSize: r.small ? 15 : 17, color: c.text }}>{plateOrName(sel.d)}</Text>
           <Text maxFontSizeMultiplier={1.2} numberOfLines={1}>
             <Text style={hasSpeed
-              ? { fontFamily: fonts.bold, fontSize: 28, letterSpacing: -0.6, color: c.text }
+              ? { fontFamily: fonts.bold, fontSize: r.small ? 24 : 28, letterSpacing: -0.6, color: c.text }
               : { fontFamily: fonts.bold, fontSize: 14, color: g === 'nogps' ? c.amberText : c.textMuted }}>
               {hasSpeed ? String(sel.s.speed ?? 0) : STATUS_LABEL[g]}
             </Text>

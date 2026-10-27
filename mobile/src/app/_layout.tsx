@@ -1,5 +1,6 @@
 // Root: fonts, splash screen, data cache, login state, and the logged-in / logged-out split.
 import { useEffect, useState } from 'react';
+import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -36,6 +37,8 @@ function RootNavigator() {
   return (
     <>
       <StatusBar style={c.dark ? 'light' : 'dark'} />
+      <View style={{ flex: 1, alignItems: 'center', backgroundColor: c.bg }}>
+      <View style={{ flex: 1, width: '100%', maxWidth: 640 }}>
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg }, animation: 'slide_from_right' }}>
         <Stack.Protected guard={!user}>
           <Stack.Screen name="(auth)" />
@@ -45,6 +48,8 @@ function RootNavigator() {
         </Stack.Protected>
         <Stack.Screen name="share/[token]" />
       </Stack>
+      </View>
+      </View>
     </>
   );
 }

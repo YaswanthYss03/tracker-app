@@ -24,6 +24,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { DIcon } from '@/components/DesignIcon';
 import { colorOf } from '@/lib/vehicleColors';
 import { fonts, radius, shadow, space, type, useColors } from '@/theme';
+import { clamp, useResponsive } from '@/lib/responsive';
 import type { TabProps } from './types';
 
 type Section = 'driver' | 'service' | 'tracker' | 'more';
@@ -34,6 +35,8 @@ const SIGNAL = ['No signal', 'Weak', 'Fair', 'Good', 'Excellent'];
 
 export function Overview({ device, state, isOwner }: TabProps) {
   const c = useColors();
+  const r = useResponsive();
+  const mapH = Math.round(clamp(r.height * 0.18, 110, 170));
   const params = useLocalSearchParams<{ section?: Section; from?: string }>();
   const [section, setSection] = useState<Section>(params.section ?? 'driver');
   const [big, setBig] = useState(false);
@@ -68,13 +71,13 @@ export function Overview({ device, state, isOwner }: TabProps) {
       <ScrollView bounces={false} overScrollMode="never" showsVerticalScrollIndicator={false} contentContainerStyle={styles.page}>
         {/* Hero */}
         <View style={styles.hero}>
-          <VehicleTile type={device.icon} color={device.color} width={88} height={62} dimmed={g === 'offline'} style={{ borderRadius: 18 }} />
+          <VehicleTile type={device.icon} color={device.color} width={r.small ? 72 : 88} height={r.small ? 52 : 62} dimmed={g === 'offline'} style={{ borderRadius: 18 }} />
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             {g === 'offline' ? (
-              <Text style={{ fontFamily: fonts.bold, fontSize: 24, lineHeight: 30, letterSpacing: -0.4, color: c.textMuted }}>Offline</Text>
+              <Text style={{ fontFamily: fonts.bold, fontSize: r.small ? 20 : 24, lineHeight: 30, letterSpacing: -0.4, color: c.textMuted }}>Offline</Text>
             ) : (
               <Text maxFontSizeMultiplier={1.2}>
-                <Text style={{ fontFamily: fonts.bold, fontSize: 40, lineHeight: 46, letterSpacing: -1, color: c.text }}>{state.speed ?? 0}</Text>
+                <Text style={{ fontFamily: fonts.bold, fontSize: r.small ? 34 : 40, lineHeight: r.small ? 40 : 46, letterSpacing: -1, color: c.text }}>{state.speed ?? 0}</Text>
                 <Text style={{ fontFamily: fonts.medium, fontSize: 16, color: c.textMuted }}> km/h</Text>
               </Text>
             )}
@@ -91,7 +94,7 @@ export function Overview({ device, state, isOwner }: TabProps) {
         </View>
 
         {/* Map card: takes the free height; the button makes it fill the page */}
-        <View style={[styles.map, { backgroundColor: c.surface2 }, big && { height: 330 }]}>
+        <View style={[styles.map, { backgroundColor: c.surface2, height: mapH }, big && { height: Math.round(clamp(r.height * 0.42, 240, 380)) }]}>
           <AppMap
             initialCenter={hasPos ? { lat: state.lat!, lon: state.lon! } : undefined}
             initialZoom={15}
@@ -173,6 +176,7 @@ const vehicleLabel = (v: { registrationNumber: string | null; name: string | nul
 
 function DriverSection({ device, canEdit }: { device: TabProps['device']; canEdit: boolean }) {
   const c = useColors();
+  const r = useResponsive();
   const qc = useQueryClient();
   const { data: drivers = [] } = useDrivers();
   const [pick, setPick] = useState<Slot | null>(null);
@@ -233,7 +237,7 @@ function DriverSection({ device, canEdit }: { device: TabProps['device']; canEdi
   const other = pick === 'main' ? backup : main;
   const choices = drivers.filter((d) => d.id !== other?.id);
   // 4 in a row; 5 once there are more than 24 drivers.
-  const cols = choices.length > 24 ? 5 : 4;
+  const cols = choices.length > 24 ? 5 : r.tiny ? 3 : 4;
   const closeAll = () => { setPick(null); setConflict(null); setError(null); };
   const openPick = (s: Slot) => { setError(null); setPick(s); };
 

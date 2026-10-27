@@ -19,6 +19,7 @@ import { Scrubber, SpeedGauge, usePlayback } from '@/components/tripParts';
 import { EmptyState, Loading } from '@/components/ui';
 import { brand } from '@/theme/colors';
 import { radius, shadow, space, type, useColors } from '@/theme';
+import { useResponsive } from '@/lib/responsive';
 
 const DAY = 86_400_000;
 const MAP_SMALL = 230;
@@ -57,6 +58,7 @@ function pointAt(points: RoutePoint[], t: number) {
 }
 
 export default function Trips() {
+  const resp = useResponsive();
   const c = useColors();
   const { devices } = useTrackers();
   const sorted = useMemo(() => [...devices].sort((a, b) => plateOrName(a).localeCompare(plateOrName(b))), [devices]);
@@ -314,7 +316,7 @@ export default function Trips() {
               <TotalStat value={duration(total.driveS)} label="Driving" />
             </View>
             {/* Needle = speed at the playback position (like a replayed speedometer). */}
-            <SpeedGauge value={playSpeed} caption={playSpeed != null ? `km/h · ${new Date(tNow).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}` : undefined} />
+            <SpeedGauge size={resp.tiny ? 108 : resp.small ? 122 : 140} value={playSpeed} caption={playSpeed != null ? `km/h · ${new Date(tNow).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}` : undefined} />
             <View style={[styles.statCol, { alignItems: 'flex-end' }]}>
               <TotalStat value={`${total.top} km/h`} label="Top speed" right />
               <TotalStat value={total.avg ? `${total.avg} km/h` : '—'} label="Avg speed" right />

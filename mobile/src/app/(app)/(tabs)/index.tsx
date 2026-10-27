@@ -22,6 +22,7 @@ import { DriverAvatar } from '@/components/DriverAvatar';
 import { DIcon, type DesignIconName } from '@/components/DesignIcon';
 import { DesignSheet } from '@/components/DesignSheet';
 import { fonts, type } from '@/theme';
+import { clamp, useResponsive } from '@/lib/responsive';
 import { useHomeColors as useColors } from '@/theme/designHome';
 
 type Filter = 'all' | StatusGroup;
@@ -39,6 +40,8 @@ export default function Home() {
   const c = useColors();
   const { devices, stateOf, isLoading, isRefetching, error, refetch, offline, updatedAt } = useTrackers();
   const unread = useUnreadAlerts();
+  const r = useResponsive();
+  const mapH = Math.round(clamp(r.height * 0.19, 120, 190));
   const selectedId = useSelectedVehicle();
   const [filter, setFilter] = useState<Filter>('all');
   const [sort, setSort] = useState<Sort>('recent');
@@ -103,7 +106,7 @@ export default function Home() {
     <View>
       <View style={{ gap: 18 }}>
         {/* Live map of every vehicle; tap for the Map tab */}
-        <Pressable onPress={() => router.navigate('/map')} accessibilityRole="button" accessibilityLabel="Open the live map" style={[styles.mapCard, { backgroundColor: c.surface2 }]}>
+        <Pressable onPress={() => router.navigate('/map')} accessibilityRole="button" accessibilityLabel="Open the live map" style={[styles.mapCard, { backgroundColor: c.surface2, height: mapH }]}>
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
             <AppMap initialCenter={points[0]} initialZoom={12} dots={dots} fitTo={points} fitKey={dots.length} padding={{ top: 24, bottom: 24, left: 24, right: 24 }} attribution="bottom-left" />
           </View>
@@ -241,9 +244,11 @@ export default function Home() {
 
 function Quick({ icon, label, onPress, badge }: { icon: DesignIconName; label: string; onPress: () => void; badge?: number }) {
   const c = useColors();
+  const r = useResponsive();
+  const size = r.tiny ? 44 : 50;
   return (
     <View style={{ flex: 1, alignItems: 'center' }}>
-      <Pressable accessibilityRole="button" accessibilityLabel={badge ? `${label}, ${badge}` : label} onPress={onPress} style={({ pressed }) => [styles.quick, { backgroundColor: c.surface, opacity: pressed ? 0.8 : 1 }]}>
+      <Pressable accessibilityRole="button" accessibilityLabel={badge ? `${label}, ${badge}` : label} onPress={onPress} style={({ pressed }) => [styles.quick, { width: size, height: size, borderRadius: size / 2, backgroundColor: c.surface, opacity: pressed ? 0.8 : 1 }]}>
         <DIcon name={icon} size={20} strokeWidth={1.9} color={c.accent} />
         {badge ? (
           <View style={[styles.badge, { top: -2, right: -2, backgroundColor: c.amber, borderColor: c.bg }]}>
@@ -278,6 +283,7 @@ function Dot({ group, c }: { group: StatusGroup; c: HC }) {
 /** Picture (+ service warning) · plate · driver + km today · speed + last update. */
 function VehicleRow({ row: { d, s, g }, selected, dueDays, onPress, onDriver }: { row: Row; selected: boolean; dueDays?: number; onPress: () => void; onDriver: () => void }) {
   const c = useColors();
+  const r = useResponsive();
   const never = !s.lastSeenAt;
   const hasSpeed = g === 'moving' || g === 'stopped';
   const speed = hasSpeed ? String(s.speed ?? 0) : never ? 'Waiting' : STATUS_LABEL[g];
@@ -294,7 +300,7 @@ function VehicleRow({ row: { d, s, g }, selected, dueDays, onPress, onDriver }: 
       style={({ pressed }) => [styles.row, { backgroundColor: selected || pressed ? c.surface : 'transparent' }]}
     >
       <View>
-        <VehicleTile type={d.icon} color={d.color} width={74} height={52} dimmed={g === 'offline'} style={{ borderRadius: 16 }} />
+        <VehicleTile type={d.icon} color={d.color} width={r.small ? 62 : 74} height={r.small ? 46 : 52} dimmed={g === 'offline'} style={{ borderRadius: r.small ? 14 : 16 }} />
         {svcWarn && (
           <View style={[styles.svcBadge, { borderColor: c.bg, backgroundColor: overdue ? '#FBE5E5' : '#FBEBD0' }]}>
             <DIcon name="wrench" size={13} strokeWidth={2.2} color={overdue ? '#B42828' : '#7F4A00'} />
@@ -302,7 +308,7 @@ function VehicleRow({ row: { d, s, g }, selected, dueDays, onPress, onDriver }: 
         )}
       </View>
       <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-        {d.registrationNumber ? <Plate value={d.registrationNumber} size={16} /> : <Text style={{ fontFamily: fonts.medium, fontSize: 14, color: c.textMuted }}>No number plate</Text>}
+        {d.registrationNumber ? <Plate value={d.registrationNumber} size={r.tiny ? 14 : r.small ? 15 : 16} /> : <Text style={{ fontFamily: fonts.medium, fontSize: 14, color: c.textMuted }}>No number plate</Text>}
         <View style={styles.inline}>
           <Pressable
             onPress={onDriver}
