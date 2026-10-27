@@ -3,24 +3,25 @@
 // vehicle: picture, number plate, driver + km today, speed and last update.
 // The vehicle picked last (here or on the Map tab) is highlighted.
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { errorText } from '@/api/client';
 import { plateOrName, type Device, type Live } from '@/api/types';
 import { useTrackers } from '@/live/TrackersProvider';
 import { useUnreadAlerts } from '@/lib/alertsSeen';
 import { agoText, timeAgo } from '@/lib/format';
 import { selectVehicle, useSelectedVehicle } from '@/lib/selectedVehicle';
-import { STATUS_LABEL, STATUS_ORDER, statusColor, statusGroup, type StatusGroup } from '@/lib/vehicleStatus';
+import { STATUS_LABEL, STATUS_ORDER, statusGroup, type StatusGroup } from '@/lib/vehicleStatus';
 import { colorOf } from '@/lib/vehicleColors';
 import { DUE_SOON_DAYS, daysUntil, dueText } from '@/lib/service';
 import { AppMap } from '@/components/Map';
-import { Banner, PillButton, Plate, Sheet, VehicleTile } from '@/components/kit';
+import { Banner, PillButton, Plate, VehicleTile } from '@/components/kit';
+import type { useHomeColors } from '@/theme/designHome';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import { DIcon, type DesignIconName } from '@/components/DesignIcon';
-import { fonts, type, useColors, type Palette } from '@/theme';
+import { fonts, type } from '@/theme';
+import { useHomeColors as useColors } from '@/theme/designHome';
 
 type Filter = 'all' | StatusGroup;
 type Sort = 'recent' | 'plate' | 'speed' | 'status';
@@ -150,14 +151,14 @@ export default function Home() {
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={styles.topbar}>
         <View style={[styles.logoMark, { backgroundColor: c.accent }]}>
-          <Ionicons name="location" size={20} color={c.onAccent} />
+          <DIcon name="pin" size={20} strokeWidth={2.2} color="#FFFFFF" />
         </View>
-        <Text maxFontSizeMultiplier={1} style={[type.wordmark, { flex: 1, fontSize: 30, lineHeight: 40, color: c.text }]}>Pavakie</Text>
+        <Text maxFontSizeMultiplier={1} style={{ flex: 1, fontFamily: fonts.bold, fontSize: 24, lineHeight: 29, letterSpacing: -0.5, color: c.text }}>Pavakie</Text>
         <Pressable accessibilityRole="button" accessibilityLabel={unread ? `Alerts, ${unread} new` : 'Alerts'} onPress={() => router.push('/alerts')} style={[styles.bell, { backgroundColor: c.surface }]}>
           <DIcon name="bell" size={22} strokeWidth={1.9} />
           {unread > 0 && (
             <View style={[styles.badge, { top: 2, right: 1, backgroundColor: c.accent, borderColor: c.surface }]}>
-              <Text style={[styles.badgeText, { color: c.onAccent }]}>{unread > 99 ? '99+' : unread}</Text>
+              <Text style={[styles.badgeText, { color: '#FFFFFF' }]}>{unread > 99 ? '99+' : unread}</Text>
             </View>
           )}
         </Pressable>
@@ -205,19 +206,19 @@ export default function Home() {
       )}
 
       {/* Sort */}
-      <Sheet visible={sheet === 'sort'} onClose={() => setSheet(null)} title="Sort vehicles">
+      <DesignSheet visible={sheet === 'sort'} onClose={() => setSheet(null)} title="Sort vehicles">
         <View>
           {SORTS.map(([key, label]) => (
-            <Pressable key={key} onPress={() => { setSort(key); setSheet(null); }} accessibilityRole="radio" accessibilityState={{ selected: sort === key }} style={[styles.sortRow, { borderBottomColor: c.border }]}>
+            <Pressable key={key} onPress={() => { setSort(key); setSheet(null); }} accessibilityRole="radio" accessibilityState={{ selected: sort === key }} style={[styles.sortRow, { borderBottomColor: '#EDEDED' }]}>
               <Text style={{ flex: 1, fontFamily: fonts.body, fontSize: 16, color: c.text }}>{label}</Text>
-              {sort === key && <DIcon name="check" size={20} strokeWidth={2.6} />}
+              {sort === key && <DIcon name="check" size={20} strokeWidth={2.6} color={c.accent} />}
             </Pressable>
           ))}
         </View>
-      </Sheet>
+      </DesignSheet>
 
       {/* Service due */}
-      <Sheet visible={sheet === 'service'} onClose={() => setSheet(null)} title="Service due">
+      <DesignSheet visible={sheet === 'service'} onClose={() => setSheet(null)} title="Service due">
         {serviceList.length === 0 ? (
           <Text style={[type.small, { color: c.textMuted }]}>No service dates yet. Add a service record on a vehicle's Service tab to get reminders.</Text>
         ) : (
@@ -227,8 +228,22 @@ export default function Home() {
             ))}
           </ScrollView>
         )}
-      </Sheet>
+      </DesignSheet>
     </SafeAreaView>
+  );
+}
+
+function DesignSheet({ visible, onClose, title, children }: { visible: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+  const c = useColors();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} onPress={onClose} accessibilityLabel="Close" />
+      <View style={{ marginTop: 'auto', backgroundColor: c.surface, borderTopLeftRadius: 26, borderTopRightRadius: 26, paddingTop: 8, paddingHorizontal: 20, paddingBottom: 24, gap: 12, maxHeight: '80%' }}>
+        <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: '#D6D6D6' }} />
+        <Text style={{ fontFamily: fonts.bold, fontSize: 20, color: c.text }}>{title}</Text>
+        {children}
+      </View>
+    </Modal>
   );
 }
 
@@ -237,10 +252,10 @@ function Quick({ icon, label, onPress, badge }: { icon: DesignIconName; label: s
   return (
     <View style={{ flex: 1, alignItems: 'center' }}>
       <Pressable accessibilityRole="button" accessibilityLabel={badge ? `${label}, ${badge}` : label} onPress={onPress} style={({ pressed }) => [styles.quick, { backgroundColor: c.surface, opacity: pressed ? 0.8 : 1 }]}>
-        <DIcon name={icon} size={22} strokeWidth={1.9} />
+        <DIcon name={icon} size={22} strokeWidth={1.9} color={c.accent} />
         {badge ? (
-          <View style={[styles.badge, { top: -2, right: -2, backgroundColor: c.accent, borderColor: c.bg }]}>
-            <Text style={[styles.badgeText, { color: c.onAccent }]}>{badge}</Text>
+          <View style={[styles.badge, { top: -2, right: -2, backgroundColor: c.amber, borderColor: c.bg }]}>
+            <Text style={[styles.badgeText, { color: '#FFFFFF' }]}>{badge}</Text>
           </View>
         ) : null}
       </Pressable>
@@ -258,8 +273,13 @@ function StatusTab({ label, a11y, active, onPress, group }: { label: string; a11
   );
 }
 
-function Dot({ group, c }: { group: StatusGroup; c: Palette }) {
-  const col = statusColor(group, c);
+type HC = ReturnType<typeof useHomeColors>;
+function dotColor(g: StatusGroup, c: HC) {
+  return { moving: c.green, stopped: c.dark ? c.text : '#333333', nogps: c.amber, offline: c.offline }[g];
+}
+
+function Dot({ group, c }: { group: StatusGroup; c: HC }) {
+  const col = dotColor(group, c);
   return <View style={[styles.dot, group === 'offline' ? { borderWidth: 1.5, borderColor: col } : { backgroundColor: col }]} />;
 }
 
@@ -284,8 +304,8 @@ function VehicleRow({ row: { d, s, g }, selected, dueDays, onPress }: { row: Row
       <View>
         <VehicleTile type={d.icon} color={d.color} width={74} height={52} dimmed={g === 'offline'} style={{ borderRadius: 16 }} />
         {svcWarn && (
-          <View style={[styles.svcBadge, { borderColor: c.bg, backgroundColor: overdue ? c.dangerSoft : 'rgba(234,170,0,0.35)' }]}>
-            <DIcon name="wrench" size={13} strokeWidth={2.2} color={overdue ? c.danger : c.text} />
+          <View style={[styles.svcBadge, { borderColor: c.bg, backgroundColor: overdue ? '#FBE5E5' : '#FBEBD0' }]}>
+            <DIcon name="wrench" size={13} strokeWidth={2.2} color={overdue ? '#B42828' : '#7F4A00'} />
           </View>
         )}
       </View>
@@ -311,12 +331,12 @@ function VehicleRow({ row: { d, s, g }, selected, dueDays, onPress }: { row: Row
       </View>
       <View style={{ alignItems: 'flex-end', gap: 4 }}>
         <Text maxFontSizeMultiplier={1.2} numberOfLines={1}>
-          <Text style={{ fontFamily: fonts.bold, fontSize: hasSpeed ? 17 : 12, color: hasSpeed || g === 'nogps' ? c.text : c.textMuted }}>{speed}</Text>
+          <Text style={{ fontFamily: fonts.bold, fontSize: hasSpeed ? 17 : 12, color: hasSpeed ? c.text : g === 'nogps' ? c.amberText : c.textMuted }}>{speed}</Text>
           {hasSpeed ? <Text style={{ fontFamily: fonts.medium, fontSize: 12, color: c.textMuted }}> km/h</Text> : null}
         </Text>
         <View style={styles.inline}>
           <Dot group={g} c={c} />
-          <Text numberOfLines={1} style={[styles.meta, { color: hasSpeed ? c.success : g === 'nogps' ? c.text : c.textMuted }]}>{ago}</Text>
+          <Text numberOfLines={1} style={[styles.meta, { color: hasSpeed ? c.greenText : g === 'nogps' ? c.amberText : c.textMuted }]}>{ago}</Text>
         </View>
       </View>
     </Pressable>
@@ -326,7 +346,7 @@ function VehicleRow({ row: { d, s, g }, selected, dueDays, onPress }: { row: Row
 /** Service sheet row: picture · plate · when it's due · how close (bar). */
 function ServiceRow({ device, days, onPress }: { device: Device; days: number; onPress: () => void }) {
   const c = useColors();
-  const col = days < 0 ? c.danger : days <= DUE_SOON_DAYS ? c.accent : c.success;
+  const col = days < 0 ? c.danger : days <= DUE_SOON_DAYS ? c.amber : c.green;
   const fill = days < 0 ? 1 : Math.max(0, Math.min(1, (SERVICE_CYCLE_DAYS - days) / SERVICE_CYCLE_DAYS));
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${plateOrName(device)}, service ${dueText(days).toLowerCase()}`} style={[styles.svcRow, { borderBottomColor: c.border }]}>
@@ -336,7 +356,7 @@ function ServiceRow({ device, days, onPress }: { device: Device; days: number; o
           <Plate value={plateOrName(device)} size={14} />
           <Text style={{ fontFamily: fonts.bold, fontSize: 13, color: days < 0 ? c.danger : c.text }}>{dueText(days)}</Text>
         </View>
-        <View style={{ height: 6, borderRadius: 3, backgroundColor: c.surface2, overflow: 'hidden' }}>
+        <View style={{ height: 6, borderRadius: 3, backgroundColor: c.track, overflow: 'hidden' }}>
           <View style={{ height: '100%', width: `${Math.round(fill * 100)}%`, borderRadius: 3, backgroundColor: col }} />
         </View>
       </View>

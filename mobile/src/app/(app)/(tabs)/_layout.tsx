@@ -7,7 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { TrackersProvider } from '@/live/TrackersProvider';
 import { DIcon, type DesignIconName } from '@/components/DesignIcon';
-import { fonts, useColors } from '@/theme';
+import { fonts } from '@/theme';
+import { useHomeColors as useColors } from '@/theme/designHome';
 
 function TabIcon(name: DesignIconName) {
   return ({ focused }: { focused: boolean }) => <PillIcon name={name} focused={focused} />;
@@ -16,8 +17,8 @@ function TabIcon(name: DesignIconName) {
 function PillIcon({ name, focused }: { name: DesignIconName; focused: boolean }) {
   const c = useColors();
   return (
-    <View style={{ width: 60, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: focused ? (c.dark ? 'rgba(234,170,0,0.22)' : 'rgba(234,170,0,0.24)') : 'transparent' }}>
-      <DIcon name={name} size={24} strokeWidth={1.9} color={focused ? c.text : c.textMuted} />
+    <View style={{ width: 60, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: focused ? (c.dark ? 'rgba(234,170,0,0.22)' : '#FBE4E4') : 'transparent' }}>
+      <DIcon name={name} size={24} strokeWidth={1.9} color={focused ? c.accent : c.textMuted} />
     </View>
   );
 }
