@@ -79,6 +79,11 @@ export default function Home() {
     selectVehicle(id);
     router.push(`/device/${id}`);
   }
+  // Driver's page if there is one, otherwise a new-driver form.
+  function openDriver(d: Device) {
+    selectVehicle(d.id);
+    router.push(d.mainDriver?.id ? `/drivers/edit?id=${d.mainDriver.id}` : '/drivers/edit');
+  }
   function closeSearch() {
     setQuery('');
     setSearchOpen(false);
@@ -121,10 +126,10 @@ export default function Home() {
           ))}
         </ScrollView>
         <Pressable onPress={() => (searchOpen || query ? closeSearch() : setSearchOpen(true))} accessibilityRole="button" accessibilityLabel="Search vehicles" accessibilityState={{ expanded: searchOpen }} style={styles.barBtn}>
-          <DIcon name="search" size={20} strokeWidth={2} />
+          <DIcon name="search" size={17} strokeWidth={2} />
         </Pressable>
         <Pressable onPress={() => setSheet('sort')} accessibilityRole="button" accessibilityLabel={`Sort: ${SORTS.find((x) => x[0] === sort)![1]}`} style={styles.barBtn}>
-          <DIcon name="sort" size={20} strokeWidth={1.9} />
+          <DIcon name="sort" size={17} strokeWidth={1.9} />
           {sort !== 'recent' && <View style={[styles.sortDot, { backgroundColor: c.accent }]} />}
         </Pressable>
       </View>
@@ -155,7 +160,7 @@ export default function Home() {
         </View>
         <Text maxFontSizeMultiplier={1} style={{ flex: 1, fontFamily: fonts.bold, fontSize: 24, lineHeight: 29, letterSpacing: -0.5, color: c.text }}>Pavakie</Text>
         <Pressable accessibilityRole="button" accessibilityLabel={unread ? `Alerts, ${unread} new` : 'Alerts'} onPress={() => router.push('/alerts')} style={[styles.bell, { backgroundColor: c.surface }]}>
-          <DIcon name="bell" size={22} strokeWidth={1.9} />
+          <DIcon name="bell" size={18} strokeWidth={1.9} />
           {unread > 0 && (
             <View style={[styles.badge, { top: 2, right: 1, backgroundColor: c.accent, borderColor: c.surface }]}>
               <Text style={[styles.badgeText, { color: '#FFFFFF' }]}>{unread > 99 ? '99+' : unread}</Text>
@@ -201,7 +206,7 @@ export default function Home() {
               <Text style={{ fontFamily: fonts.bold, fontSize: 16, color: c.text, minHeight: 44, textAlignVertical: 'center' }}>No match — show all</Text>
             </Pressable>
           }
-          renderItem={({ item }) => <VehicleRow row={item} selected={item.d.id === selectedId} dueDays={dueDays.get(item.d.id)} onPress={() => open(item.d.id)} />}
+          renderItem={({ item }) => <VehicleRow row={item} selected={item.d.id === selectedId} dueDays={dueDays.get(item.d.id)} onPress={() => open(item.d.id)} onDriver={() => openDriver(item.d)} />}
         />
       )}
 
@@ -252,7 +257,7 @@ function Quick({ icon, label, onPress, badge }: { icon: DesignIconName; label: s
   return (
     <View style={{ flex: 1, alignItems: 'center' }}>
       <Pressable accessibilityRole="button" accessibilityLabel={badge ? `${label}, ${badge}` : label} onPress={onPress} style={({ pressed }) => [styles.quick, { backgroundColor: c.surface, opacity: pressed ? 0.8 : 1 }]}>
-        <DIcon name={icon} size={22} strokeWidth={1.9} color={c.accent} />
+        <DIcon name={icon} size={20} strokeWidth={1.9} color={c.accent} />
         {badge ? (
           <View style={[styles.badge, { top: -2, right: -2, backgroundColor: c.amber, borderColor: c.bg }]}>
             <Text style={[styles.badgeText, { color: '#FFFFFF' }]}>{badge}</Text>
@@ -284,7 +289,7 @@ function Dot({ group, c }: { group: StatusGroup; c: HC }) {
 }
 
 /** Picture (+ service warning) · plate · driver + km today · speed + last update. */
-function VehicleRow({ row: { d, s, g }, selected, dueDays, onPress }: { row: Row; selected: boolean; dueDays?: number; onPress: () => void }) {
+function VehicleRow({ row: { d, s, g }, selected, dueDays, onPress, onDriver }: { row: Row; selected: boolean; dueDays?: number; onPress: () => void; onDriver: () => void }) {
   const c = useColors();
   const never = !s.lastSeenAt;
   const hasSpeed = g === 'moving' || g === 'stopped';
@@ -312,20 +317,28 @@ function VehicleRow({ row: { d, s, g }, selected, dueDays, onPress }: { row: Row
       <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
         {d.registrationNumber ? <Plate value={d.registrationNumber} size={16} /> : <Text style={{ fontFamily: fonts.medium, fontSize: 14, color: c.textMuted }}>No number plate</Text>}
         <View style={styles.inline}>
-          {driver ? (
-            <>
-              {d.mainDriver ? (
-                <DriverAvatar driver={d.mainDriver} size={20} />
-              ) : (
-                <View style={[styles.avatar, { backgroundColor: c.dark ? c.surface2 : 'rgba(234,170,0,0.25)' }]}>
-                  <Text style={{ fontSize: 11, fontFamily: fonts.bold, color: c.text }}>{driver.charAt(0).toUpperCase()}</Text>
-                </View>
-              )}
-              <Text numberOfLines={1} style={[styles.meta, { color: c.textMuted, flexShrink: 1 }]}>{driver.split(' ')[0]}</Text>
-            </>
-          ) : (
-            <Text style={[styles.meta, { fontFamily: fonts.bold, color: c.text }]}>No driver</Text>
-          )}
+          <Pressable
+            onPress={onDriver}
+            hitSlop={{ top: 6, bottom: 6, left: 4, right: 8 }}
+            accessibilityRole="link"
+            accessibilityLabel={driver ? `Driver ${driver}, open details` : 'No driver, add one'}
+            style={styles.inline}
+          >
+            {driver ? (
+              <>
+                {d.mainDriver ? (
+                  <DriverAvatar driver={d.mainDriver} size={20} />
+                ) : (
+                  <View style={[styles.avatar, { backgroundColor: c.dark ? c.surface2 : 'rgba(234,170,0,0.25)' }]}>
+                    <Text style={{ fontSize: 11, fontFamily: fonts.bold, color: c.text }}>{driver.charAt(0).toUpperCase()}</Text>
+                  </View>
+                )}
+                <Text numberOfLines={1} style={[styles.meta, { color: c.textMuted, flexShrink: 1 }]}>{driver.split(' ')[0]}</Text>
+              </>
+            ) : (
+              <Text style={[styles.meta, { fontFamily: fonts.bold, color: c.accent }]}>+ Add driver</Text>
+            )}
+          </Pressable>
           <Text style={[styles.meta, { color: c.textMuted }]}>· {km}</Text>
         </View>
       </View>
@@ -368,13 +381,13 @@ const shadow = { elevation: 3, shadowColor: '#000', shadowOpacity: 0.15, shadowR
 const styles = StyleSheet.create({
   topbar: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: PAD, paddingTop: 18, paddingBottom: 6 },
   logoMark: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  bell: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  bell: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   badge: { position: 'absolute', minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
   badgeText: { fontSize: 11, lineHeight: 13, fontFamily: fonts.bold },
   mapCard: { height: 150, borderRadius: 22, overflow: 'hidden' },
   expand: { position: 'absolute', right: 10, bottom: 10, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', ...shadow },
   actions: { flexDirection: 'row', gap: 8 },
-  quick: { width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center' },
+  quick: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center' },
   filterBar: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 18, marginHorizontal: -PAD, paddingLeft: PAD, paddingRight: 10, borderBottomWidth: 1 },
   tab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 12, paddingBottom: 8.5, paddingHorizontal: 2, borderBottomWidth: 2.5 },
   barBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
