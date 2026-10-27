@@ -2,7 +2,7 @@
  * Pieces for trip screens:
  *   <Scrubber>    play/pause + a bar you can drag (0..1)
  *   <SpeedChart>  speed over time as a soft area chart
- *   <SpeedGauge>  half-circle gauge with a needle
+ *   <SpeedGauge>  speedometer dial with a needle
  */
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
@@ -106,37 +106,47 @@ export function SpeedChart({ points, height = 120, cursor }: { points: [number, 
   );
 }
 
-/** Half-circle gauge (0..max km/h) with a needle at `value`. */
-export function SpeedGauge({ value, max = 120, size = 130, label }: { value: number; max?: number; size?: number; label: string }) {
+/**
+ * Speedometer dial from the design: white disc, 240° track with the speed
+ * filled in, ticks every 10 and numbers every 20 (0–100), needle and hub,
+ * and the speed (or nothing) underneath. `value` null = not playing.
+ */
+export function SpeedGauge({ value, caption, size = 140 }: { value: number | null; caption?: string; size?: number }) {
   const c = useColors();
-  const r = size / 2 - 10;
-  const cx = size / 2;
-  const cy = size / 2 + 4;
-  const pt = (v: number, rr = r) => {
-    const a = Math.PI * (1 - Math.min(v, max) / max);
-    return [cx + rr * Math.cos(a), cy - rr * Math.sin(a)];
+  const max = 100;
+  const fr = Math.max(0, Math.min(1, (value ?? 0) / max));
+  // Ticks every 10 km/h along the 240° sweep (long at 0/20/40…); numbers every 20.
+  const at = (v: number, r: number) => {
+    const a = ((-120 + 240 * (v / max) - 90) * Math.PI) / 180;
+    return [60 + r * Math.cos(a), 60 + r * Math.sin(a)];
   };
-  const arc = (v0: number, v1: number) => {
-    const [x0, y0] = pt(v0);
-    const [x1, y1] = pt(v1);
-    return `M${x0},${y0} A${r},${r} 0 0 1 ${x1},${y1}`;
-  };
-  const [nx, ny] = pt(value, r - 14);
+  const ticks = Array.from({ length: 11 }, (_, i) => {
+    const v = i * 10;
+    const [x1, y1] = at(v, 40);
+    const [x2, y2] = at(v, i % 2 === 0 ? 37 : 40);
+    return `M${x1.toFixed(1)} ${y1.toFixed(1)}L${x2.toFixed(1)} ${y2.toFixed(1)}`;
+  }).join('');
   return (
-    <View style={{ alignItems: 'center' }} accessibilityLabel={`${label} ${value} km/h`}>
-      <Svg width={size} height={size / 2 + 14}>
-        <Path d={arc(0, max)} stroke={c.surface2} strokeWidth={10} fill="none" strokeLinecap="round" />
-        <Path d={arc(0, Math.max(0.5, value))} stroke={c.accent} strokeWidth={10} fill="none" strokeLinecap="round" />
-        {[0, max / 3, (2 * max) / 3, max].map((v) => {
-          const [tx, ty] = pt(v, r - 22);
-          return <SvgText key={v} x={tx} y={ty + 3} fontSize={9} fill={c.textMuted} textAnchor="middle">{Math.round(v)}</SvgText>;
-        })}
-        <Line x1={cx} y1={cy} x2={nx} y2={ny} stroke={c.text} strokeWidth={3} strokeLinecap="round" />
-        <Circle cx={cx} cy={cy} r={5} fill={c.text} />
-      </Svg>
-      <Text style={[type.name, { color: c.text, marginTop: -4 }]}>{value} <Text style={[type.caption, { color: c.textMuted }]}>km/h</Text></Text>
-      <Text style={[type.caption, { color: c.textMuted, letterSpacing: 0 }]}>{label}</Text>
-    </View>
+    <Svg width={size} height={size} viewBox="0 0 120 120" accessibilityLabel={value != null ? `Speedometer ${value} km/h` : 'Speedometer'}>
+      <Circle cx={60} cy={60} r={57} fill={c.dark ? c.surface : '#FFFFFF'} />
+      <Circle cx={60} cy={60} r={44} fill="none" stroke={c.surface2} strokeWidth={7} strokeDasharray="184.3 276.5" transform="rotate(150 60 60)" />
+      {fr > 0 && (
+        <Circle cx={60} cy={60} r={44} fill="none" stroke={c.accent} strokeWidth={7} strokeDasharray={`${(184.3 * fr).toFixed(1)} 276.5`} transform="rotate(150 60 60)" />
+      )}
+      <Path d={ticks} stroke={c.textMuted} strokeWidth={1.2} strokeLinecap="round" />
+      {[0, 20, 40, 60, 80, 100].map((v) => {
+        const [x, y] = at(v, 29);
+        return <SvgText key={v} x={x} y={y + 3} fontSize={8} fill={c.textMuted} textAnchor="middle">{v}</SvgText>;
+      })}
+      <Line x1={60} y1={60} x2={60} y2={25} stroke={c.accent} strokeWidth={2.5} strokeLinecap="round" transform={`rotate(${(-120 + 240 * fr).toFixed(1)} 60 60)`} />
+      <Circle cx={60} cy={60} r={5} fill={c.text} />
+      {value != null && (
+        <>
+          <SvgText x={60} y={94} fontSize={21} fontWeight="700" fill={c.text} textAnchor="middle">{value}</SvgText>
+          <SvgText x={60} y={105} fontSize={8.5} fill={c.textMuted} textAnchor="middle">{caption ?? 'km/h'}</SvgText>
+        </>
+      )}
+    </Svg>
   );
 }
 

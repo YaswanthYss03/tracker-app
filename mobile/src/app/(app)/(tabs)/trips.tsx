@@ -14,7 +14,7 @@ import { useTrackers } from '@/live/TrackersProvider';
 import { duration, km, timeOnly } from '@/lib/format';
 import { dmyToIso, isoToDmy, maskDate } from '@/lib/drivers';
 import { AppMap, type LatLon, type MapMarker, type MapRoute } from '@/components/Map';
-import { Card, Chip, Input, Plate, RoundButton, Stat } from '@/components/kit';
+import { Card, Chip, Input, Plate, RoundButton } from '@/components/kit';
 import { Scrubber, SpeedGauge, usePlayback } from '@/components/tripParts';
 import { EmptyState, Loading } from '@/components/ui';
 import { brand } from '@/theme/colors';
@@ -161,6 +161,7 @@ export default function Trips() {
     const top = list.reduce((a, t) => Math.max(a, t.maxSpeed), 0);
     return {
       km: Math.round(dist * 10) / 10,
+      driveS,
       hours: Math.round((driveS / 3600) * 10) / 10,
       top,
       // GPS jitter can push distance/time above the real top speed; never show avg > top.
@@ -168,6 +169,8 @@ export default function Trips() {
     };
   };
   const total = stats(windowTrips);
+  const playing0 = progress > 0 && progress < 1;
+  const playSpeed = !compare && playing0 && pointsBy[0] ? pointAt(pointsBy[0].points, tNow)?.speed ?? 0 : null;
 
   if (!devices.length) {
     return (
@@ -306,10 +309,15 @@ export default function Trips() {
           </Card>
         ) : (
           <View style={styles.totals}>
-            <Stat value={km(total.km)} unit="km" label="Distance" />
-            <SpeedGauge value={total.avg} label="Average" size={124} />
-            <View style={{ flex: 1, alignItems: 'flex-end' }}>
-              <Stat value={String(total.top)} unit="km/h" label="Top speed" />
+            <View style={styles.statCol}>
+              <TotalStat value={`${km(total.km)} km`} label="Distance" />
+              <TotalStat value={duration(total.driveS)} label="Driving" />
+            </View>
+            {/* Needle = speed at the playback position (like a replayed speedometer). */}
+            <SpeedGauge value={playSpeed} caption={playSpeed != null ? `km/h · ${new Date(tNow).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}` : undefined} />
+            <View style={[styles.statCol, { alignItems: 'flex-end' }]}>
+              <TotalStat value={`${total.top} km/h`} label="Top speed" right />
+              <TotalStat value={total.avg ? `${total.avg} km/h` : '—'} label="Avg speed" right />
             </View>
           </View>
         )}
@@ -341,6 +349,16 @@ export default function Trips() {
   );
 }
 
+function TotalStat({ value, label, right }: { value: string; label: string; right?: boolean }) {
+  const c = useColors();
+  return (
+    <View style={{ gap: 1, alignItems: right ? 'flex-end' : 'flex-start' }}>
+      <Text numberOfLines={1} style={[type.name, { color: c.text, fontSize: 18, lineHeight: 24 }]}>{value}</Text>
+      <Text style={[type.caption, { color: c.textMuted, letterSpacing: 0, fontSize: 12 }]}>{label}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: space.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
@@ -351,7 +369,8 @@ const styles = StyleSheet.create({
   map: { borderRadius: radius.card, overflow: 'hidden' },
   mapBtn: { position: 'absolute', top: 12, right: 12 },
   noRoute: { position: 'absolute', alignSelf: 'center', top: '42%', paddingHorizontal: space.md, paddingVertical: space.sm, borderRadius: radius.pill },
-  totals: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  totals: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4 },
+  statCol: { flex: 1, minWidth: 0, gap: 16 },
   tr: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.md, minHeight: 44 },
   th: { flex: 1, textAlign: 'right', letterSpacing: 0 },
   thFirst: { flex: 2, textAlign: 'left' },
