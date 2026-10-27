@@ -20,6 +20,7 @@ import { SkeletonRows } from '@/components/effects';
 import { Banner, PillButton, Plate, Sheet, VehicleTile } from '@/components/kit';
 import { DUE_SOON_DAYS, daysUntil, dueText } from '@/lib/service';
 import { DriverAvatar } from '@/components/DriverAvatar';
+import { DIcon, type DesignIconName } from '@/components/DesignIcon';
 import { radius, space, type, useColors } from '@/theme';
 
 type Filter = 'all' | StatusGroup;
@@ -77,10 +78,10 @@ export default function Home() {
 
   const quickActions = (
     <View style={styles.actions}>
-      <Quick icon="time-outline" label="Trips" onPress={() => router.push('/trips')} />
-      <Quick icon="car-sport-outline" plus label="Add vehicle" onPress={() => router.push('/add-tracker')} />
-      <Quick icon="people-outline" label="Share with family" onPress={() => (devices.length === 1 ? router.push(`/device/${devices[0].id}?tab=sharing`) : setShareOpen(true))} />
-      <Quick icon="construct-outline" label="Service & support" badge={dueSoon.length || undefined} onPress={() => setServiceOpen(true)} />
+      <Quick icon="replay" label="Trips" onPress={() => router.push('/trips')} />
+      <Quick icon="carPlus" label="Add vehicle" onPress={() => router.push('/add-tracker')} />
+      <Quick icon="users" label="Share with family" onPress={() => (devices.length === 1 ? router.push(`/device/${devices[0].id}?tab=sharing`) : setShareOpen(true))} />
+      <Quick icon="wrench" label="Service & support" badge={dueSoon.length || undefined} onPress={() => setServiceOpen(true)} />
     </View>
   );
 
@@ -250,21 +251,16 @@ export default function Home() {
   );
 }
 
-function Quick({ icon, label, onPress, plus, badge }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void; plus?: boolean; badge?: number }) {
+function Quick({ icon, label, onPress, badge }: { icon: DesignIconName; label: string; onPress: () => void; badge?: number }) {
   const c = useColors();
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={badge ? `${label}, ${badge} due` : label} onPress={onPress} style={({ pressed }) => [styles.quick, { backgroundColor: c.surface, opacity: pressed ? 0.8 : 1 }]}>
-      <Ionicons name={icon} size={24} color={c.text} />
+      <DIcon name={icon} size={22} strokeWidth={1.9} />
       {badge ? (
         <View style={[styles.qBadge, { backgroundColor: c.accent, borderColor: c.bg }]}>
-          <Text style={{ fontSize: 10, fontWeight: '700', color: c.onAccent }}>{badge}</Text>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: c.onAccent }}>{badge}</Text>
         </View>
       ) : null}
-      {plus && (
-        <View style={[styles.plus, { backgroundColor: c.accent }]}>
-          <Ionicons name="add" size={11} color={c.onAccent} />
-        </View>
-      )}
     </Pressable>
   );
 }
@@ -341,8 +337,7 @@ const styles = StyleSheet.create({
   fullBtn: { position: 'absolute', right: 12, bottom: 30, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', ...shadow },
   actions: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: space.sm },
   quick: { width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', ...shadow },
-  qBadge: { position: 'absolute', top: -2, right: -2, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
-  plus: { position: 'absolute', right: 10, top: 12, width: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
+  qBadge: { position: 'absolute', top: -2, right: -2, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
   filterBar: { flexDirection: 'row', alignItems: 'flex-end', borderBottomWidth: StyleSheet.hairlineWidth },
   filters: { flex: 1, flexDirection: 'row', gap: space.md },
   filterTab: { paddingTop: space.xs },
