@@ -7,7 +7,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { api, errorText } from '@/api/client';
 import { plateOrName, type Device, type RoutePoint, type Trip } from '@/api/types';
-import { useAddress } from '@/lib/address';
+import { shortAddress, useAddress } from '@/lib/address';
 import { duration, km, timeOnly } from '@/lib/format';
 import { AppMap } from '@/components/Map';
 import { DriverAvatar } from '@/components/DriverAvatar';
@@ -103,11 +103,11 @@ export default function TripScreen() {
 
         {/* From → to */}
         <Card style={{ gap: space.md }}>
-          <Stop color={brand.marigold} place={startAddr ?? `${trip.start.lat.toFixed(4)}, ${trip.start.lon.toFixed(4)}`} time={timeOnly(trip.startTime)} />
+          <Stop color={brand.marigold} place={startAddr ? shortAddress(startAddr, 28) : `${trip.start.lat.toFixed(4)}, ${trip.start.lon.toFixed(4)}`} time={timeOnly(trip.startTime)} />
           <View style={[styles.connector, { borderColor: c.border }]} />
           <Stop
             color={brand.aubergine}
-            place={trip.inProgress ? 'Still driving' : endAddr ?? (trip.end ? `${trip.end.lat.toFixed(4)}, ${trip.end.lon.toFixed(4)}` : '—')}
+            place={trip.inProgress ? 'Still driving' : endAddr ? shortAddress(endAddr, 28) : (trip.end ? `${trip.end.lat.toFixed(4)}, ${trip.end.lon.toFixed(4)}` : '—')}
             time={trip.endTime ? timeOnly(trip.endTime) : 'now'}
           />
         </Card>
@@ -146,7 +146,7 @@ function Stop({ color, place, time }: { color: string; place: string; time: stri
   return (
     <View style={styles.stop}>
       <View style={[styles.stopDot, { backgroundColor: color, borderColor: c.surface }]} />
-      <Text numberOfLines={2} style={[type.bodyStrong, { color: c.text, flex: 1 }]}>{place}</Text>
+      <Text numberOfLines={1} ellipsizeMode="tail" style={[type.bodyStrong, { color: c.text, flex: 1, minWidth: 0 }]}>{place}</Text>
       <Text style={[type.small, { color: c.textMuted }]}>{time}</Text>
     </View>
   );

@@ -14,7 +14,7 @@ import { plateOrName, type Driver } from '@/api/types';
 import { useDrivers } from '@/lib/drivers';
 import { dueText, longDate, rupees, serviceType, useService } from '@/lib/service';
 import { DriverAvatar } from '@/components/DriverAvatar';
-import { useAddress } from '@/lib/address';
+import { shortAddress, useAddress } from '@/lib/address';
 import { timeAgo, timeOnly } from '@/lib/format';
 import { shareLiveLocation } from '@/lib/share';
 import { STATUS_LABEL, statusGroup } from '@/lib/vehicleStatus';
@@ -80,8 +80,8 @@ export function Overview({ device, state, isOwner }: TabProps) {
                 {state.lastSeenAt ? `${STATUS_LABEL[g]} · ${timeAgo(state.lastSeenAt)}` : 'Never connected'}
               </Text>
             </View>
-            <Text numberOfLines={2} style={[type.small, { color: c.textMuted }]}>
-              {hasPos ? address ?? (addrLoading ? 'Finding address…' : `${state.lat!.toFixed(5)}, ${state.lon!.toFixed(5)}`) : 'No GPS position yet'}
+            <Text numberOfLines={1} ellipsizeMode="tail" style={[type.small, { color: c.textMuted }]}>
+              {hasPos ? address ? shortAddress(address, 38) : (addrLoading ? 'Finding address…' : `${state.lat!.toFixed(5)}, ${state.lon!.toFixed(5)}`) : 'No GPS position yet'}
             </Text>
           </View>
         </View>
