@@ -7,7 +7,8 @@ import type { Geofence } from '@/api/types';
 import { brand } from '@/theme/colors';
 import { AppMap } from '@/components/Map';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { AppText, Button, Card, EmptyState, ErrorBox, Field, IconButton, Loading, Row } from '@/components/ui';
+import { AppText, Button, Card, ErrorBox, Field, IconButton, Row } from '@/components/ui';
+import { fonts } from '@/theme';
 import { radius, space, useColors } from '@/theme';
 import type { TabProps } from './types';
 
@@ -46,7 +47,7 @@ export function GeofencesTab({ device, state, isOwner }: TabProps) {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.lg, paddingBottom: 48 }}>
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 8, gap: 14, paddingBottom: 24 }}>
       <View style={[styles.mapBox, { borderColor: draft ? c.accent : c.border, borderWidth: draft ? 2 : StyleSheet.hairlineWidth }]}>
         <AppMap
           initialCenter={hasPos ? { lat: state.lat!, lon: state.lon! } : undefined}
@@ -67,19 +68,19 @@ export function GeofencesTab({ device, state, isOwner }: TabProps) {
       </View>
 
       {isOwner && !draft && (
-        <Button title="Add area" icon="add-circle-outline" onPress={() => setDraft({ lat: state.lat, lon: state.lon, radiusM: 200, name: '' })} />
+        <Button title="Add area" icon="add" small onPress={() => setDraft({ lat: state.lat, lon: state.lon, radiusM: 200, name: '' })} />
       )}
 
       {draft && (
         <Card style={{ gap: space.md }}>
-          <AppText variant="h3">New area</AppText>
-          <AppText variant="small" color="textMuted">Long-press the map to place the centre.</AppText>
+          <AppText variant="small" style={{ fontFamily: fonts.bold, fontSize: 14 }}>New area</AppText>
+          <AppText variant="caption" color="textMuted" style={{ letterSpacing: 0, fontSize: 12 }}>Long-press the map to place the centre.</AppText>
           <Field label="Name" value={draft.name} onChangeText={(name) => setDraft({ ...draft, name })} placeholder="Home, Office, School…" />
           <Row style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
             <IconButton icon="remove" label="Smaller" onPress={() => setDraft({ ...draft, radiusM: Math.max(50, draft.radiusM - 50) })} />
             <View style={{ alignItems: 'center' }}>
-              <AppText variant="display">{draft.radiusM}</AppText>
-              <AppText variant="caption" color="textMuted">METERS RADIUS</AppText>
+              <AppText variant="h3">{draft.radiusM} m</AppText>
+              <AppText variant="caption" color="textMuted" style={{ letterSpacing: 0, fontSize: 11 }}>radius</AppText>
             </View>
             <IconButton icon="add" label="Bigger" onPress={() => setDraft({ ...draft, radiusM: Math.min(50_000, draft.radiusM + 50) })} />
           </Row>
@@ -91,25 +92,27 @@ export function GeofencesTab({ device, state, isOwner }: TabProps) {
         </Card>
       )}
 
-      {isLoading ? <Loading /> : fences.length === 0 ? (
-        <EmptyState icon="radio-button-on-outline" title="No geofences" text="Get an alert when the vehicle enters or leaves an area." />
+      {isLoading ? (
+        <AppText variant="caption" color="textMuted" center style={{ letterSpacing: 0 }}>Loading…</AppText>
+      ) : fences.length === 0 ? (
+        <AppText variant="caption" color="textMuted" center style={{ letterSpacing: 0, fontSize: 12, paddingVertical: 16 }}>No areas yet. Add one to get an alert when the vehicle enters or leaves.</AppText>
       ) : (
         fences.map((f) => (
-          <Card key={f.id} style={{ gap: space.sm }}>
+          <View key={f.id} style={{ gap: 6, paddingVertical: 6 }}>
             <Row style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
               <View style={{ flex: 1 }}>
-                <AppText variant="h3">{f.name}</AppText>
-                <AppText variant="small" color="textMuted">{f.type === 'circle' ? `${f.radiusM} m radius` : `${f.points?.length}-point area`}</AppText>
+                <AppText variant="small" style={{ fontFamily: fonts.bold, fontSize: 15, lineHeight: 20 }}>{f.name}</AppText>
+                <AppText variant="caption" color="textMuted" style={{ letterSpacing: 0, fontSize: 12 }}>{f.type === 'circle' ? `${f.radiusM} m radius` : `${f.points?.length}-point area`}</AppText>
               </View>
               {isOwner && <Button title="Delete" variant="danger" small onPress={() => setDeleting(f)} />}
             </Row>
             {isOwner && (
-              <Row gap={space.xl}>
-                <Row gap={6}><Switch value={f.alertOnEnter} onValueChange={() => toggle(f, 'alertOnEnter')} trackColor={{ true: c.accent }} /><AppText variant="small">Alert on enter</AppText></Row>
-                <Row gap={6}><Switch value={f.alertOnExit} onValueChange={() => toggle(f, 'alertOnExit')} trackColor={{ true: c.accent }} /><AppText variant="small">Alert on leave</AppText></Row>
+              <Row gap={space.lg}>
+                <Row gap={4}><Switch style={{ transform: [{ scale: 0.8 }] }} value={f.alertOnEnter} onValueChange={() => toggle(f, 'alertOnEnter')} trackColor={{ true: c.accent }} /><AppText variant="caption" style={{ letterSpacing: 0, fontSize: 12 }}>Enter</AppText></Row>
+                <Row gap={4}><Switch style={{ transform: [{ scale: 0.8 }] }} value={f.alertOnExit} onValueChange={() => toggle(f, 'alertOnExit')} trackColor={{ true: c.accent }} /><AppText variant="caption" style={{ letterSpacing: 0, fontSize: 12 }}>Leave</AppText></Row>
               </Row>
             )}
-          </Card>
+          </View>
         ))
       )}
 
@@ -130,5 +133,5 @@ export function GeofencesTab({ device, state, isOwner }: TabProps) {
 }
 
 const styles = StyleSheet.create({
-  mapBox: { height: 320, borderRadius: radius.md, overflow: 'hidden' },
+  mapBox: { height: 190, borderRadius: radius.card, overflow: 'hidden' },
 });

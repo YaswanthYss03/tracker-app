@@ -132,3 +132,22 @@ export const deviceName = (d: Pick<Device, 'name' | 'imei'>) => d.name || `Track
 
 /** Number plate if set, else the vehicle name. */
 export const plateOrName = (d: Pick<Device, 'name' | 'imei' | 'registrationNumber'>) => d.registrationNumber || deviceName(d);
+
+/** A trip the owner started by hand. New data goes into the latest one. */
+export type TripLog = {
+  id: string;
+  number: number;
+  name: string | null;
+  startedAt: string;
+  /** When the next trip began; null = the current trip. */
+  endedAt: string | null;
+  current: boolean;
+  distanceKm: number;
+  maxSpeed: number;
+  avgSpeed: number;
+  durationS: number;
+  idleS: number;
+  start: { lat: number; lon: number } | null;
+  end: { lat: number; lon: number } | null;
+  points: number;
+};

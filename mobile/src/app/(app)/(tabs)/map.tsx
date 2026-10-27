@@ -153,7 +153,7 @@ export default function MapTab() {
 
         <View style={styles.nav}>
           <RoundNav icon="chevL" label="Previous vehicle" onPress={() => step(-1)} c={c} />
-          <Pressable onPress={() => router.push(`/device/${sel.d.id}`)} accessibilityRole="button" style={[styles.details, { backgroundColor: c.accent }]}>
+          <Pressable onPress={() => router.push(`/device/${sel.d.id}?from=map`)} accessibilityRole="button" style={[styles.details, { backgroundColor: c.accent }]}>
             <Text style={{ fontFamily: fonts.bold, fontSize: 16, color: '#FFFFFF' }}>Details</Text>
           </Pressable>
           <RoundNav icon="chevR" label="Next vehicle" onPress={() => step(1)} c={c} />

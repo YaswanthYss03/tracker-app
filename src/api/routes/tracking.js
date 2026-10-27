@@ -4,6 +4,10 @@
  *   GET    /positions          ?from&to&maxPoints   route history (max 7 days, simplified)   viewer
  *   GET    /trips              ?from&to             trips (max 31 days) incl. one in progress viewer
  *   GET    /trips/:tripId/route ?maxPoints          the path of one trip                     viewer
+ *   GET    /trip-logs                               hand-started trips with numbers         viewer
+ *   POST   /trip-logs          { name? } starts a new trip; new data goes into it         owner
+ *   DELETE /trip-logs/:id      its data joins the trip before it                          owner
+ *   GET    /trip-logs/:id/route ?maxPoints          the path of one hand-started trip      viewer
  *   GET    /summary                                 totals: distance, driving hours, avg speed viewer
  *   GET    /reports/daily      ?from&to (YYYY-MM-DD) distance, driving/idle time per day      viewer
  *   GET    /events             ?from&to&type=a,b    alerts (max 31 days)                     viewer
@@ -22,13 +26,14 @@ const crypto = require('crypto');
 const express = require('express');
 const { parse, wrap, z, schemas } = require('../validate');
 const { requireDeviceAccess } = require('../middleware');
-const { eventDto, tripDto, geofenceDto } = require('../dto');
+const { eventDto, tripDto, tripLogDto, geofenceDto } = require('../dto');
 const { badRequest, notFound, AppError } = require('../../lib/errors');
 const { simplifyToMax } = require('../../lib/geo');
 const { localDay } = require('../../processors/trips');
 const { runCommand, CUSTOMER_COMMANDS } = require('../../services/commands');
 const positionsRepo = require('../../db/repositories/positions');
 const tripsRepo = require('../../db/repositories/trips');
+const tripLogsRepo = require('../../db/repositories/tripLogs');
 const eventsRepo = require('../../db/repositories/events');
 const geofencesRepo = require('../../db/repositories/geofences');
 const shareLinksRepo = require('../../db/repositories/shareLinks');
@@ -128,6 +133,57 @@ function createTrackingRouter({ ownership, registry, processors, hooks, config, 
     const end = trip.endTime ?? new Date();
     const rows = await positionsRepo.findRoute(req.device.id, { from: trip.startTime, to: end });
     res.json({ data: { trip: tripDto(trip), ...routeDto(rows, maxPoints) } });
+  }));
+
+  // ---- hand-started trips ("+ New trip") ----
+  // Everything recorded after a trip is started belongs to it, until the next one is started.
+  const logWindow = (logs, i) => ({ from: logs[i].startedAt, to: i === 0 ? new Date() : logs[i - 1].startedAt });
+
+  router.get('/:deviceId/trip-logs', viewer, wrap(async (req, res) => {
+    const logs = await tripLogsRepo.list(req.device.id); // newest first
+    const data = await Promise.all(logs.map(async (log, i) => {
+      const { from, to } = logWindow(logs, i);
+      const { stats } = await tripLogsRepo.statsBetween(req.device.id, from, to);
+      return tripLogDto(log, { number: logs.length - i, endedAt: i === 0 ? null : logs[i - 1].startedAt, stats });
+    }));
+    res.json({ data, count: data.length });
+  }));
+
+  router.post('/:deviceId/trip-logs', owner, wrap(async (req, res) => {
+    const { name } = parse(z.object({ name: z.string().trim().max(60).optional() }), req.body ?? {});
+    const log = await tripLogsRepo.create(req.device.id, { name, createdBy: req.user.id });
+    const total = (await tripLogsRepo.list(req.device.id)).length;
+    res.status(201).json({ data: tripLogDto(log, { number: total, endedAt: null, stats: tripLogsRepo.statsFrom([]) }) });
+  }));
+
+  router.delete('/:deviceId/trip-logs/:id', owner, wrap(async (req, res) => {
+    const { id } = parse(z.object({ id: schemas.uuid }), req.params);
+    const log = await tripLogsRepo.find(req.device.id, id);
+    if (!log) throw notFound('Trip not found');
+    await tripLogsRepo.remove(id);
+    res.status(204).end();
+  }));
+
+  router.get('/:deviceId/trip-logs/:id/route', viewer, wrap(async (req, res) => {
+    const { id } = parse(z.object({ id: schemas.uuid }), req.params);
+    const { maxPoints } = parse(maxPointsSchema, req.query);
+    const logs = await tripLogsRepo.list(req.device.id);
+    const i = logs.findIndex((l) => l.id === id);
+    if (i === -1) throw notFound('Trip not found');
+    const { from, to } = logWindow(logs, i);
+    const { rows, stats } = await tripLogsRepo.statsBetween(req.device.id, from, to);
+    // Same shape as /trips/:id/route so the app can show it with the same screen.
+    const trip = {
+      id,
+      startTime: from,
+      endTime: i === 0 ? null : to,
+      start: stats.startLat != null ? { lat: stats.startLat, lon: stats.startLon } : { lat: 0, lon: 0 },
+      end: stats.endLat != null ? { lat: stats.endLat, lon: stats.endLon } : null,
+      distanceKm: Math.round(stats.distanceM / 100) / 10,
+      maxSpeed: stats.maxSpeed, avgSpeed: stats.avgSpeed, durationS: stats.durationS, idleS: stats.idleS,
+      inProgress: i === 0,
+    };
+    res.json({ data: { trip, ...routeDto(rows, maxPoints) } });
   }));
 
   // Totals over all saved trips (trips are deleted when the vehicle is released,

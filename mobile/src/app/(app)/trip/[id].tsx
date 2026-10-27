@@ -28,11 +28,12 @@ function dayName(iso: string) {
 
 export default function TripScreen() {
   const c = useColors();
-  const { id, deviceId } = useLocalSearchParams<{ id: string; deviceId: string }>();
+  const { id, deviceId, log } = useLocalSearchParams<{ id: string; deviceId: string; log?: string }>();
+  const route = log ? 'trip-logs' : 'trips'; // hand-started trips have their own route
   const device = useQuery({ queryKey: ['device', deviceId], queryFn: () => api<{ data: Device }>(`/devices/${deviceId}`) }).data?.data;
   const q = useQuery({
-    queryKey: ['trip-route', deviceId, id],
-    queryFn: () => api<{ data: { trip: Trip; points: RoutePoint[] } }>(`/devices/${deviceId}/trips/${id}/route?maxPoints=1500`),
+    queryKey: ['trip-route', route, deviceId, id],
+    queryFn: () => api<{ data: { trip: Trip; points: RoutePoint[] } }>(`/devices/${deviceId}/${route}/${id}/route?maxPoints=1500`),
   });
   const trip = q.data?.data.trip;
   const points = q.data?.data.points ?? [];

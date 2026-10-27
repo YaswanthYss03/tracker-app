@@ -20,6 +20,7 @@ import { STATUS_LABEL, statusGroup } from '@/lib/vehicleStatus';
 import { AppMap } from '@/components/Map';
 import { PillButton, Plate, RoundButton, Stat, StatusDot, TopBar, UnderlineTabs, VehicleTile, accentTint } from '@/components/kit';
 import { DesignSheet } from '@/components/DesignSheet';
+import { BottomNav } from '@/components/BottomNav';
 import { DIcon } from '@/components/DesignIcon';
 import { colorOf } from '@/lib/vehicleColors';
 import { fonts, radius, shadow, space, type, useColors } from '@/theme';
@@ -33,7 +34,7 @@ const SIGNAL = ['No signal', 'Weak', 'Fair', 'Good', 'Excellent'];
 
 export function Overview({ device, state, isOwner }: TabProps) {
   const c = useColors();
-  const params = useLocalSearchParams<{ section?: Section }>();
+  const params = useLocalSearchParams<{ section?: Section; from?: string }>();
   const [section, setSection] = useState<Section>(params.section ?? 'driver');
   const [big, setBig] = useState(false);
   const g = statusGroup(state);
@@ -52,7 +53,7 @@ export function Overview({ device, state, isOwner }: TabProps) {
   };
 
   return (
-    <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: c.bg }}>
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.bg }}>
       <TopBar
         onBack={() => router.back()}
         title={<Plate value={plateOrName(device)} size={20} />}
@@ -90,7 +91,7 @@ export function Overview({ device, state, isOwner }: TabProps) {
         </View>
 
         {/* Map card: takes the free height; the button makes it fill the page */}
-        <View style={[styles.map, { backgroundColor: c.surface2 }]}>
+        <View style={[styles.map, { backgroundColor: c.surface2 }, big && { maxHeight: 2000 }]}>
           <AppMap
             initialCenter={hasPos ? { lat: state.lat!, lon: state.lon! } : undefined}
             initialZoom={15}
@@ -99,7 +100,9 @@ export function Overview({ device, state, isOwner }: TabProps) {
             follow={hasPos ? { lat: state.lat!, lon: state.lon! } : null}
           />
           <View style={styles.mapBtn}>
-            <RoundButton icon={big ? 'contract-outline' : 'expand-outline'} label={big ? 'Smaller map' : 'Bigger map'} onPress={toggleBig} size={40} iconSize={18} />
+            <Pressable onPress={toggleBig} accessibilityRole="button" accessibilityLabel={big ? 'Smaller map' : 'Bigger map'} style={styles.mapToggle}>
+              <DIcon name={big ? 'shrink' : 'expand'} size={16} strokeWidth={2.2} color="#202020" />
+            </Pressable>
           </View>
         </View>
 
@@ -158,6 +161,7 @@ export function Overview({ device, state, isOwner }: TabProps) {
           </>
         )}
       </ScrollView>
+      <BottomNav active={params.from === 'map' ? 'map' : 'home'} />
     </SafeAreaView>
   );
 }
@@ -345,7 +349,7 @@ function DriverCard({ role, driver, canEdit, onAdd, onChange }: {
   if (!driver) {
     return (
       <Pressable disabled={!canEdit} onPress={onAdd} accessibilityRole="button" style={[styles.driverCard, styles.dashed, { borderColor: c.offline }]}>
-        <View style={[styles.avatar, { backgroundColor: c.dark ? c.surface : '#FFFFFF' }]}>
+        <View style={[styles.avatar, { backgroundColor: c.dark ? c.surface2 : '#FFFFFF' }]}>
           <DIcon name="plus" size={22} strokeWidth={2.2} color={c.accent} />
         </View>
         <View style={{ flex: 1 }}>
@@ -357,7 +361,7 @@ function DriverCard({ role, driver, canEdit, onAdd, onChange }: {
   }
   // The card itself does nothing when tapped (avoids accidental opens); only the call and edit buttons act.
   return (
-    <View style={[styles.driverCard, { backgroundColor: c.dark ? c.surface : '#FFFFFF' }]}>
+    <View style={[styles.driverCard, { backgroundColor: c.surface }]}>
       <DriverAvatar driver={driver} size={48} />
       <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
         <Text style={[type.caption, { color: role === 'MAIN' ? c.accent : c.textMuted, fontFamily: type.fieldLabel.fontFamily }]}>{role}</Text>
@@ -375,7 +379,7 @@ function DriverCard({ role, driver, canEdit, onAdd, onChange }: {
         </Pressable>
       ) : null}
       {canEdit && (
-        <Pressable onPress={onChange} accessibilityRole="button" accessibilityLabel={`Change ${role.toLowerCase()} driver`} style={[styles.editCircle, { backgroundColor: c.surface }]}>
+        <Pressable onPress={onChange} accessibilityRole="button" accessibilityLabel={`Change ${role.toLowerCase()} driver`} style={[styles.editCircle, { backgroundColor: c.dark ? c.surface2 : '#FFFFFF' }]}>
           <DIcon name="edit" size={18} strokeWidth={2} />
         </Pressable>
       )}
@@ -390,7 +394,7 @@ function ServiceSection({ deviceId, canEdit }: { deviceId: string; canEdit: bool
   const next = data?.next ?? null;
   const add = () => router.push(`/service/edit?deviceId=${deviceId}`);
   const open = (id: string) => canEdit && router.push(`/service/edit?deviceId=${deviceId}&id=${id}`);
-  const card = { backgroundColor: c.dark ? c.surface : '#FFFFFF' };
+  const card = { backgroundColor: c.surface };
 
   if (isLoading) return <View style={[styles.svcCard, card]}><Text style={[type.small, { color: c.textMuted }]}>Loading…</Text></View>;
   if (!records.length) {
@@ -457,8 +461,8 @@ function ServiceSection({ deviceId, canEdit }: { deviceId: string; canEdit: bool
 function Tile({ icon, value, label }: { icon: IconName; value: string; label: string }) {
   const c = useColors();
   return (
-    <View style={[styles.tile, { backgroundColor: c.dark ? c.surface : '#FFFFFF' }]}>
-      <View style={[styles.tileIcon, { backgroundColor: accentTint }]}>
+    <View style={[styles.tile, { backgroundColor: c.surface }]}>
+      <View style={[styles.tileIcon, { backgroundColor: c.dark ? c.surface2 : '#FFFFFF' }]}>
         <Ionicons name={icon} size={17} color={c.accent} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -476,7 +480,7 @@ function MoreTile({ icon, label, onPress, disabled }: { icon: IconName; label: s
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
-      style={({ pressed }) => [styles.moreTile, { backgroundColor: c.dark ? c.surface : '#FFFFFF', opacity: disabled ? 0.4 : pressed ? 0.7 : 1 }]}
+      style={({ pressed }) => [styles.moreTile, { backgroundColor: c.surface, opacity: disabled ? 0.4 : pressed ? 0.7 : 1 }]}
     >
       <Ionicons name={icon} size={19} color={c.accent} />
       <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.bold, fontSize: 14, color: c.text }}>{label}</Text>
@@ -485,11 +489,12 @@ function MoreTile({ icon, label, onPress, disabled }: { icon: IconName; label: s
 }
 
 const styles = StyleSheet.create({
-  page: { flexGrow: 1, paddingHorizontal: space.lg, paddingTop: 4, paddingBottom: 12, gap: 12 },
+  page: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 4, paddingBottom: 14, gap: 14 },
   hero: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   row6: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  map: { flex: 1, minHeight: 130, borderRadius: radius.card, overflow: 'hidden' },
+  map: { flex: 1, minHeight: 110, maxHeight: 170, borderRadius: radius.card, overflow: 'hidden' },
   mapBtn: { position: 'absolute', top: 10, right: 10 },
+  mapToggle: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', elevation: 3, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
   replay: { height: 40, borderRadius: 20, borderWidth: 1.5, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tile: { width: '48.5%', flexGrow: 1, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 16 },

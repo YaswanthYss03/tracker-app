@@ -124,6 +124,26 @@ function tripDto(t) {
   };
 }
 
+/** A hand-started trip with its numbers. `endedAt` is when the next trip began (null = current one). */
+function tripLogDto(log, { number, endedAt, stats }) {
+  return {
+    id: log.id,
+    number,
+    name: log.name,
+    startedAt: log.startedAt,
+    endedAt,
+    current: !endedAt,
+    distanceKm: Math.round(stats.distanceM / 100) / 10,
+    maxSpeed: stats.maxSpeed,
+    avgSpeed: stats.avgSpeed,
+    durationS: stats.durationS,
+    idleS: stats.idleS,
+    start: stats.startLat != null ? { lat: stats.startLat, lon: stats.startLon } : null,
+    end: stats.endLat != null ? { lat: stats.endLat, lon: stats.endLon } : null,
+    points: stats.points,
+  };
+}
+
 function geofenceDto(f) {
   return {
     id: f.id,
@@ -138,4 +158,4 @@ function geofenceDto(f) {
   };
 }
 
-module.exports = { driverDto, liveState, customerDevice, adminDevice, member, eventDto, tripDto, geofenceDto };
+module.exports = { driverDto, liveState, customerDevice, adminDevice, member, eventDto, tripDto, tripLogDto, geofenceDto };
