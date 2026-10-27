@@ -25,7 +25,7 @@ export const fonts = {
   body: 'DMSans_400Regular',
   medium: 'DMSans_500Medium',
   bold: 'DMSans_700Bold',
-  mono: 'DMMono_500Medium', // number plates
+  mono: 'DMMono_500Medium', // (unused: plates use the sans font)
 };
 
 export const type = {
@@ -44,7 +44,7 @@ export const type = {
   title: { fontFamily: fonts.heading, fontSize: 24, lineHeight: 32 },
   name: { fontFamily: fonts.bold, fontSize: 16, lineHeight: 22 },
   fieldLabel: { fontFamily: fonts.bold, fontSize: 13, lineHeight: 18 },
-  plate: { fontFamily: fonts.mono, fontSize: 17, lineHeight: 22, letterSpacing: 1 },
+  plate: { fontFamily: fonts.bold, fontSize: 17, lineHeight: 22, letterSpacing: 0.6 },
   number: { fontFamily: fonts.bold, fontSize: 30, lineHeight: 36, letterSpacing: -0.5 },
 } as const;
 

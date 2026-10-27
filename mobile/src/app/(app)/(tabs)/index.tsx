@@ -298,7 +298,7 @@ function VehicleRow({ row: { d, s, g }, selected, dueDays, onPress }: { row: Row
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${plateOrName(d)}, ${driver ? `driver ${driver}` : 'no driver'}, ${hasSpeed ? `${s.speed ?? 0} kilometres per hour` : speed}, ${ago}${svcWarn ? `, service ${dueText(dueDays!).toLowerCase()}` : ''}`}
+      accessibilityLabel={`${d.registrationNumber || 'No number plate'}, ${driver ? `driver ${driver}` : 'no driver'}, ${hasSpeed ? `${s.speed ?? 0} kilometres per hour` : speed}, ${ago}${svcWarn ? `, service ${dueText(dueDays!).toLowerCase()}` : ''}`}
       style={({ pressed }) => [styles.row, { backgroundColor: selected || pressed ? c.surface : 'transparent' }]}
     >
       <View>
@@ -310,7 +310,7 @@ function VehicleRow({ row: { d, s, g }, selected, dueDays, onPress }: { row: Row
         )}
       </View>
       <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-        <Plate value={plateOrName(d)} size={16} />
+        {d.registrationNumber ? <Plate value={d.registrationNumber} size={16} /> : <Text style={{ fontFamily: fonts.medium, fontSize: 14, color: c.textMuted }}>No number plate</Text>}
         <View style={styles.inline}>
           {driver ? (
             <>
@@ -336,7 +336,7 @@ function VehicleRow({ row: { d, s, g }, selected, dueDays, onPress }: { row: Row
         </Text>
         <View style={styles.inline}>
           <Dot group={g} c={c} />
-          <Text numberOfLines={1} style={[styles.meta, { color: hasSpeed ? c.greenText : g === 'nogps' ? c.amberText : c.textMuted }]}>{ago}</Text>
+          <Text numberOfLines={1} style={[styles.meta, { fontSize: 11, lineHeight: 15, color: hasSpeed ? c.greenText : g === 'nogps' ? c.amberText : c.textMuted }]}>{ago}</Text>
         </View>
       </View>
     </Pressable>
