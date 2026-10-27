@@ -67,7 +67,7 @@ export function Overview({ device, state, isOwner }: TabProps) {
         ) : undefined}
       />
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: 4, paddingBottom: 48, gap: 12 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: 8, paddingBottom: 48, gap: 18 }}>
         {/* Hero */}
         <View style={styles.hero}>
           <VehicleTile type={device.icon} color={device.color} width={88} height={62} dimmed={g === 'offline'} style={{ borderRadius: 18 }} />
@@ -113,7 +113,10 @@ export function Overview({ device, state, isOwner }: TabProps) {
           <Stat value={fmt(summary?.avgSpeed)} unit="km/h" label="Avg speed" />
         </View>
 
-        <PillButton title="Replay a day" icon="play-circle-outline" variant="secondary" onPress={() => open('history')} />
+        <Pressable onPress={() => open('history')} accessibilityRole="button" style={({ pressed }) => [styles.replay, { borderColor: c.dark ? c.border : '#F3D3D3', backgroundColor: c.dark ? c.surface : '#FFFFFF', opacity: pressed ? 0.8 : 1 }]}>
+          <DIcon name="replay" size={16} strokeWidth={2} color={c.accent} />
+          <Text style={{ fontFamily: fonts.bold, fontSize: 14, lineHeight: 18, color: c.accent }}>Replay a day</Text>
+        </Pressable>
 
         <UnderlineTabs<Section> value={section} onChange={setSection} options={[['driver', 'Driver'], ['service', 'Service'], ['tracker', 'Tracker'], ['more', 'More']]} />
 
@@ -346,10 +349,17 @@ function DriverCard({ role, driver, canEdit, onAdd, onChange }: {
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
         <Text style={[type.caption, { color: role === 'MAIN' ? c.accent : c.textMuted, fontFamily: type.fieldLabel.fontFamily }]}>{role}</Text>
         <Text numberOfLines={1} style={[type.name, { color: c.text }]}>{driver.name}</Text>
-        {driver.phone ? <Text numberOfLines={1} style={[type.small, { color: c.textMuted }]}>{driver.phone}</Text> : null}
       </View>
       {driver.phone ? (
-        <RoundButton icon="call-outline" label={`Call ${driver.name}`} onPress={() => Linking.openURL(`tel:${driver.phone!.replace(/[^+\d]/g, '')}`)} size={44} iconSize={18} />
+        <Pressable
+          onPress={() => Linking.openURL(`tel:${driver.phone!.replace(/[^+\d]/g, '')}`)}
+          accessibilityRole="button"
+          accessibilityLabel={`Call ${driver.name}`}
+          hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+          style={styles.callBtn}
+        >
+          <DIcon name="phone" size={17} strokeWidth={2} />
+        </Pressable>
       ) : null}
       {canEdit && (
         <Pressable onPress={onChange} accessibilityRole="button" accessibilityLabel={`Change ${role.toLowerCase()} driver`} style={[styles.editCircle, { backgroundColor: c.surface }]}>
@@ -491,6 +501,8 @@ const styles = StyleSheet.create({
   group: { marginTop: 8, marginBottom: 2, letterSpacing: 1 },
   swapChip: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   swapBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 3, alignItems: 'center', justifyContent: 'center', elevation: 3, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
+  callBtn: { width: 28, height: 36, alignItems: 'center', justifyContent: 'center' },
+  replay: { height: 40, borderRadius: 20, borderWidth: 1.5, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   editBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   editCircle: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   bar: { height: 8, borderRadius: 4, overflow: 'hidden' },
