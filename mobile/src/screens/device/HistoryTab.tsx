@@ -12,6 +12,9 @@ import { AppText, Card, EmptyState, IconButton, Loading, Row } from '@/component
 import { radius, space, useColors } from '@/theme';
 import type { TabProps } from './types';
 
+const H3 = { fontSize: 15, lineHeight: 20 } as const;
+const S12 = { fontSize: 12, lineHeight: 17 } as const;
+
 const DAY = 86_400_000;
 
 function dayLabel(day: string) {
@@ -64,11 +67,11 @@ export function HistoryTab({ device }: TabProps) {
   const shiftDay = (delta: number) => setDay(isoDay(new Date(`${day}T12:00:00`).getTime() + delta * DAY));
 
   return (
-    <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.lg, paddingBottom: 48 }}>
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 8, gap: 14, paddingBottom: 28 }}>
       <Card style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <IconButton icon="chevron-back" label="Previous day" onPress={() => shiftDay(-1)} />
         <View style={{ alignItems: 'center' }}>
-          <AppText variant="h3">{dayLabel(day)}</AppText>
+          <AppText variant="h3" style={H3}>{dayLabel(day)}</AppText>
           <AppText variant="caption" color="textMuted">{data ? `${data.data.originalCount} POSITIONS` : ' '}</AppText>
         </View>
         <IconButton icon="chevron-forward" label="Next day" onPress={() => day < isoDay() && shiftDay(1)} color={day >= isoDay() ? c.border : undefined} />
@@ -105,8 +108,8 @@ export function HistoryTab({ device }: TabProps) {
               <Ionicons name={playing ? 'pause' : 'play'} size={26} color={c.onAccent} />
             </Pressable>
             <View style={{ flex: 1 }}>
-              <AppText variant="h3">{current ? timeOnly(current.t) : 'Replay the day'}</AppText>
-              <AppText variant="small" color="textMuted">{current ? `${current.speed} km/h` : `${timeOnly(points[0].t)} – ${timeOnly(points[points.length - 1].t)}`}</AppText>
+              <AppText variant="h3" style={H3}>{current ? timeOnly(current.t) : 'Replay the day'}</AppText>
+              <AppText variant="small" color="textMuted" style={S12}>{current ? `${current.speed} km/h` : `${timeOnly(points[0].t)} – ${timeOnly(points[points.length - 1].t)}`}</AppText>
             </View>
           </Row>
           {/* Tap anywhere on the bar to jump there */}
@@ -125,7 +128,7 @@ export function HistoryTab({ device }: TabProps) {
 }
 
 const styles = StyleSheet.create({
-  mapBox: { height: 340, borderRadius: radius.md, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
+  mapBox: { height: 230, borderRadius: radius.md, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
   play: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
   bar: { height: 12, borderRadius: 6, overflow: 'hidden' },
 });

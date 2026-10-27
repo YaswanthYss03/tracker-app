@@ -11,6 +11,9 @@ import { AppText, Button, Card, ErrorBox, Field, Row, Segmented } from '@/compon
 import { space, useColors } from '@/theme';
 import type { TabProps } from './types';
 
+const H3 = { fontSize: 15, lineHeight: 20 } as const;
+const S12 = { fontSize: 12, lineHeight: 17 } as const;
+
 const TIMEZONES: [string, string][] = [['Asia/Kolkata', 'India'], ['Asia/Dubai', 'Dubai'], ['Asia/Singapore', 'Singapore'], ['UTC', 'UTC']];
 
 export function SettingsTab({ device, isOwner, reload }: TabProps) {
@@ -60,10 +63,10 @@ export function SettingsTab({ device, isOwner, reload }: TabProps) {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.lg, paddingBottom: 48 }}>
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 8, gap: 14, paddingBottom: 28 }}>
       {isOwner && (
         <Card style={{ gap: space.md }}>
-          <AppText variant="h3">Tracker</AppText>
+          <AppText variant="h3" style={H3}>Tracker</AppText>
           <Button title="Edit plate, name, type, colour and driver" icon="create-outline" variant="secondary" small onPress={() => router.push(`/vehicles/edit?id=${device.id}`)} />
           <Field
             label="Speed limit for alerts (km/h)"
@@ -85,16 +88,16 @@ export function SettingsTab({ device, isOwner, reload }: TabProps) {
       <Card style={{ gap: space.sm }}>
         <Row style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
           <View style={{ flex: 1 }}>
-            <AppText variant="h3">Notifications</AppText>
-            <AppText variant="small" color="textMuted">Send this tracker's alerts to my phone</AppText>
+            <AppText variant="h3" style={H3}>Notifications</AppText>
+            <AppText variant="small" color="textMuted" style={S12}>Send this tracker's alerts to my phone</AppText>
           </View>
           <Switch value={notify} onValueChange={toggleNotify} trackColor={{ true: c.accent }} />
         </Row>
       </Card>
 
       <Card style={{ gap: space.md }}>
-        <AppText variant="h3">{isOwner ? 'Release tracker' : 'Leave tracker'}</AppText>
-        <AppText variant="small" color="textMuted">
+        <AppText variant="h3" style={H3}>{isOwner ? 'Release tracker' : 'Leave tracker'}</AppText>
+        <AppText variant="small" color="textMuted" style={S12}>
           {isOwner
             ? 'Selling the vehicle or tracker? Releasing deletes all history, removes everyone, and lets the next owner add it with the code on the box.'
             : 'Stop seeing this tracker. The owner can share it with you again.'}

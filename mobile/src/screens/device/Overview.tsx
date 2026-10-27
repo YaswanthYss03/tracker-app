@@ -64,7 +64,7 @@ export function Overview({ device, state, isOwner }: TabProps) {
         ) : undefined}
       />
 
-      {/* Everything fits one screen: the map takes whatever height is left. */}
+      {/* Short map and loose space at the bottom: the page scrolls a little on small phones. */}
       <ScrollView bounces={false} overScrollMode="never" showsVerticalScrollIndicator={false} contentContainerStyle={styles.page}>
         {/* Hero */}
         <View style={styles.hero}>
@@ -91,7 +91,7 @@ export function Overview({ device, state, isOwner }: TabProps) {
         </View>
 
         {/* Map card: takes the free height; the button makes it fill the page */}
-        <View style={[styles.map, { backgroundColor: c.surface2 }, big && { maxHeight: 2000 }]}>
+        <View style={[styles.map, { backgroundColor: c.surface2 }, big && { height: 330 }]}>
           <AppMap
             initialCenter={hasPos ? { lat: state.lat!, lon: state.lon! } : undefined}
             initialZoom={15}
@@ -242,13 +242,14 @@ function DriverSection({ device, canEdit }: { device: TabProps['device']; canEdi
       <DriverCard role="MAIN" driver={main} canEdit={canEdit} onAdd={() => openPick('main')} onChange={() => openPick('main')} />
       {canEdit && main && backup && (
         <View style={styles.swapWrap} pointerEvents="box-none">
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
           <Pressable
             onPress={() => !busy && run(async () => { await patch(device.id, { mainDriverId: backup.id, backupDriverId: main.id }); })}
             accessibilityRole="button"
             accessibilityLabel="Swap main and backup driver"
             style={[styles.swapBtn, { backgroundColor: c.dark ? c.surface : '#FFFFFF', borderColor: c.bg }]}
           >
-            <DIcon name="swapV" size={18} strokeWidth={2.2} color={c.accent} />
+            <DIcon name="swapV" size={14} strokeWidth={2.2} color={c.accent} />
           </Pressable>
         </View>
       )}
@@ -489,10 +490,10 @@ function MoreTile({ icon, label, onPress, disabled }: { icon: IconName; label: s
 }
 
 const styles = StyleSheet.create({
-  page: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 4, paddingBottom: 14, gap: 14 },
+  page: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 40, gap: 14 },
   hero: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   row6: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  map: { flex: 1, minHeight: 110, maxHeight: 170, borderRadius: radius.card, overflow: 'hidden' },
+  map: { height: 140, borderRadius: radius.card, overflow: 'hidden' },
   mapBtn: { position: 'absolute', top: 10, right: 10 },
   mapToggle: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', elevation: 3, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
   replay: { height: 40, borderRadius: 20, borderWidth: 1.5, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
@@ -503,14 +504,15 @@ const styles = StyleSheet.create({
   driverCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 20 },
   dashed: { borderWidth: 1.5, borderStyle: 'dashed' },
   avatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  swapWrap: { position: 'absolute', left: 0, right: 0, top: '50%', marginTop: -22, alignItems: 'center', zIndex: 2 },
+  swapWrap: { position: 'absolute', left: 0, right: 0, top: '50%', marginTop: -16, height: 32, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  divider: { position: 'absolute', left: 0, right: 0, top: 15.5, height: 1 },
   pickRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 56 },
   pickGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 16, paddingTop: 4, paddingBottom: 8 },
   pickCell: { alignItems: 'center', gap: 6 },
   pickRing: { padding: 2, borderRadius: 40, borderWidth: 3 },
   plusCircle: { borderRadius: 40, alignItems: 'center', justifyContent: 'center' },
   takenBadge: { position: 'absolute', right: -2, bottom: -2, width: 20, height: 20, borderRadius: 10, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
-  swapBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 3, alignItems: 'center', justifyContent: 'center', elevation: 3, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
+  swapBtn: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, alignItems: 'center', justifyContent: 'center', elevation: 3, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
   callBtn: { width: 28, height: 36, alignItems: 'center', justifyContent: 'center' },
   editBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   editCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
