@@ -24,6 +24,8 @@ export type MapMarker = LatLon & {
   id: string; heading?: number | null; online?: boolean; label?: string; vehicle?: string | null;
   /** Design marker: ring colour of the round bubble, and dashed for No GPS / Offline. */
   ring?: string; dashed?: boolean;
+  /** Plain dot marker (vehicle details): this fill colour, red ring, soft red halo. */
+  dot?: string;
 };
 export type MapDot = LatLon & { id: string; color: string };
 export type MapCircle = LatLon & { id: string; radiusM: number; draft?: boolean };
@@ -174,6 +176,10 @@ function buildHtml({ dark, center, zoom, routeColor, attribution }: { dark: bool
   .glow{position:absolute;left:50%;top:50%;width:96px;height:96px;margin:-48px 0 0 -48px;border-radius:50%;background:radial-gradient(circle,rgba(217,54,54,.5) 0%,rgba(217,54,54,.22) 45%,rgba(217,54,54,0) 70%);pointer-events:none;display:none;animation:pulse 1.8s ease-in-out infinite}
   .sel .glow{display:block}
   @keyframes pulse{0%,100%{transform:scale(.85);opacity:.9}50%{transform:scale(1.1);opacity:.6}}
+  /* plain dot (vehicle details) */
+  .pd{width:20px;height:20px;cursor:pointer}
+  .pd .halo{position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;background:rgba(217,54,54,.2);pointer-events:none}
+  .pd .pt{position:relative;width:20px;height:20px;box-sizing:border-box;border-radius:50%;background:var(--fill);border:3px solid #D93636}
   /* design markers: round white bubble, status ring, red pulse when selected */
   .dv{width:40px;height:40px;cursor:pointer}
   .dv .bub{position:absolute;left:50%;top:50%;width:40px;height:40px;box-sizing:border-box;border-radius:50%;background:#fff;border:2.5px solid var(--ring);box-shadow:0 2px 6px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;transform:translate(-50%,-50%);transition:width .2s,height .2s}
@@ -218,6 +224,16 @@ const IMG = ${JSON.stringify(MARKER_IMAGES)};
 
 function vehicleEl(m) {
   const el = document.createElement('div');
+  if (m.dot) {
+    el.className = 'pd';
+    el.style.setProperty('--fill', m.dot);
+    el.innerHTML = '<div class="halo"></div><div class="pt"></div>';
+    el.style.position = 'relative';
+    const l = document.createElement('div');
+    l.className = 'lbl';
+    el.appendChild(l);
+    return el;
+  }
   if (design) {
     el.className = 'dv' + (m.dashed ? ' dash' : '');
     el.style.setProperty('--ring', m.ring || '#333333');
@@ -258,7 +274,7 @@ function syncMarkers(list, s) {
   for (const m of list) {
     seen.add(m.id);
     let obj = markerObjs.get(m.id);
-    const key = String(m.online !== false) + (m.vehicle || '') + (design ? 'd' + (m.ring || '') + (m.dashed ? '1' : '0') : '');
+    const key = String(m.online !== false) + (m.vehicle || '') + (m.dot || '') + (design ? 'd' + (m.ring || '') + (m.dashed ? '1' : '0') : '');
     if (obj && obj.key !== key) { obj.marker.remove(); obj = null; }
     if (!obj) {
       const el = vehicleEl(m);
@@ -270,7 +286,7 @@ function syncMarkers(list, s) {
     obj.el.classList.toggle('sel', sel);
     obj.el.style.zIndex = sel ? '5' : '1';
     obj.el.querySelector('.lbl').textContent = m.label || '';
-    if (!design) (obj.el.querySelector('.ptr') || obj.el.querySelector('img') || obj.el.querySelector('svg')).style.transform = 'rotate(' + (m.heading || 0) + 'deg)';
+    if (!design && !m.dot) (obj.el.querySelector('.ptr') || obj.el.querySelector('img') || obj.el.querySelector('svg')).style.transform = 'rotate(' + (m.heading || 0) + 'deg)';
   }
   for (const [id, obj] of markerObjs) if (!seen.has(id)) { obj.marker.remove(); markerObjs.delete(id); }
 }

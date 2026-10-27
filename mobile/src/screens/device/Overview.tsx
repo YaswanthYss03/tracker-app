@@ -1,7 +1,7 @@
 // Vehicle details (design v2): picture + big speed + status + address, a map
 // card that grows when expanded, totals, "Replay a day", and Driver / Service /
-// Tracker tabs. Everything else (trips, report, alerts, geofences, sharing,
-// settings) is one tap away in "More".
+// Tracker / More tabs. More holds everything else (trips, report, alerts,
+// geofences, sharing, navigate, settings).
 import { useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,7 +9,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { api } from '@/api/client';
+import { api, errorText } from '@/api/client';
 import { plateOrName, type Driver } from '@/api/types';
 import { useDrivers } from '@/lib/drivers';
 import { dueText, longDate, rupees, serviceType, useService } from '@/lib/service';
@@ -19,11 +19,13 @@ import { timeAgo, timeOnly } from '@/lib/format';
 import { shareLiveLocation } from '@/lib/share';
 import { STATUS_LABEL, statusGroup } from '@/lib/vehicleStatus';
 import { AppMap } from '@/components/Map';
-import { Banner, Card, PillButton, Plate, RoundButton, Sheet, Stat, StatusDot, TopBar, UnderlineTabs, VehicleTile, accentTint } from '@/components/kit';
-import { radius, shadow, space, type, useColors } from '@/theme';
+import { Card, PillButton, Plate, RoundButton, Sheet, Stat, StatusDot, TopBar, UnderlineTabs, VehicleTile, accentTint } from '@/components/kit';
+import { DIcon } from '@/components/DesignIcon';
+import { colorOf } from '@/lib/vehicleColors';
+import { fonts, radius, shadow, space, type, useColors } from '@/theme';
 import type { TabProps } from './types';
 
-type Section = 'driver' | 'service' | 'tracker';
+type Section = 'driver' | 'service' | 'tracker' | 'more';
 type Summary = { totalKm: number; drivingHours: number; avgSpeed: number; trips: number };
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -58,20 +60,24 @@ export function Overview({ device, state, isOwner }: TabProps) {
       <TopBar
         onBack={() => router.back()}
         title={<Plate value={plateOrName(device)} size={20} />}
-        right={isOwner ? <RoundButton icon="create-outline" label="Edit vehicle" onPress={() => router.push(`/vehicles/edit?id=${device.id}`)} size={40} iconSize={20} /> : undefined}
+        right={isOwner ? (
+          <Pressable onPress={() => router.push(`/vehicles/edit?id=${device.id}`)} accessibilityRole="button" accessibilityLabel="Edit vehicle" style={styles.editBtn}>
+            <DIcon name="edit" size={20} strokeWidth={2} />
+          </Pressable>
+        ) : undefined}
       />
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: 48, gap: space.lg }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: 4, paddingBottom: 48, gap: 12 }}>
         {/* Hero */}
         <View style={styles.hero}>
-          <VehicleTile type={device.icon} color={device.color} width={104} height={86} dimmed={g === 'offline'} />
+          <VehicleTile type={device.icon} color={device.color} width={88} height={62} dimmed={g === 'offline'} style={{ borderRadius: 18 }} />
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             {g === 'offline' ? (
-              <Text style={[type.title, { color: c.text }]}>Offline</Text>
+              <Text style={{ fontFamily: fonts.bold, fontSize: 18, lineHeight: 22, color: c.textMuted }}>Offline</Text>
             ) : (
               <Text maxFontSizeMultiplier={1.2}>
-                <Text style={[type.number, { color: c.text, fontSize: 34, lineHeight: 40 }]}>{state.speed ?? 0}</Text>
-                <Text style={[type.small, { color: c.textMuted }]}> km/h</Text>
+                <Text style={{ fontFamily: fonts.bold, fontSize: 36, lineHeight: 40, letterSpacing: -1, color: c.text }}>{state.speed ?? 0}</Text>
+                <Text style={{ fontFamily: fonts.medium, fontSize: 15, color: c.textMuted }}> km/h</Text>
               </Text>
             )}
             <View style={styles.row6}>
@@ -86,17 +92,13 @@ export function Overview({ device, state, isOwner }: TabProps) {
           </View>
         </View>
 
-        {g === 'offline' && state.lastSeenAt && (
-          <Banner tone="soft" icon="cloud-offline-outline" text={`Offline since ${timeOnly(state.lastSeenAt)} · last data shown`} />
-        )}
-
         {/* Map card (grows when expanded) */}
         <Animated.View style={[styles.map, { backgroundColor: c.surface2 }, mapStyle]}>
           <AppMap
             initialCenter={hasPos ? { lat: state.lat!, lon: state.lon! } : undefined}
             initialZoom={15}
             selectedId={device.id}
-            markers={hasPos ? [{ id: device.id, lat: state.lat!, lon: state.lon!, heading: state.heading, online: state.online, vehicle: device.icon }] : []}
+            markers={hasPos ? [{ id: device.id, lat: state.lat!, lon: state.lon!, dot: colorOf(device.color)?.hex ?? '#202020' }] : []}
             follow={hasPos ? { lat: state.lat!, lon: state.lon! } : null}
           />
           <View style={styles.mapBtn}>
@@ -113,11 +115,29 @@ export function Overview({ device, state, isOwner }: TabProps) {
 
         <PillButton title="Replay a day" icon="play-circle-outline" variant="secondary" onPress={() => open('history')} />
 
-        <UnderlineTabs<Section> value={section} onChange={setSection} options={[['driver', 'Driver'], ['service', 'Service'], ['tracker', 'Tracker']]} />
+        <UnderlineTabs<Section> value={section} onChange={setSection} options={[['driver', 'Driver'], ['service', 'Service'], ['tracker', 'Tracker'], ['more', 'More']]} />
 
         {section === 'driver' && <DriverSection device={device} canEdit={isOwner} />}
 
         {section === 'service' && <ServiceSection deviceId={device.id} canEdit={isOwner} />}
+
+        {section === 'more' && (
+          <Card padded={false}>
+            <MoreRow icon="git-branch-outline" label="Trips" onPress={() => open('trips')} />
+            <MoreRow icon="bar-chart-outline" label="Report" onPress={() => open('report')} />
+            <MoreRow icon="notifications-outline" label="Alerts" onPress={() => open('alerts')} />
+            <MoreRow icon="shapes-outline" label="Geofences" onPress={() => open('geofences')} />
+            {isOwner && <MoreRow icon="people-outline" label="Share with family" onPress={() => open('sharing')} />}
+            {isOwner && <MoreRow icon="share-social-outline" label="Share live location" onPress={() => shareLiveLocation(device).catch(() => {})} />}
+            <MoreRow
+              icon="navigate-outline"
+              label="Navigate to vehicle"
+              disabled={!hasPos}
+              onPress={() => Linking.openURL(`google.navigation:q=${state.lat},${state.lon}`).catch(() => Linking.openURL(`https://www.google.com/maps?q=${state.lat},${state.lon}`))}
+            />
+            <MoreRow icon="settings-outline" label="Settings" onPress={() => open('settings')} last />
+          </Card>
+        )}
 
         {section === 'tracker' && (
           <View style={styles.grid}>
@@ -134,91 +154,169 @@ export function Overview({ device, state, isOwner }: TabProps) {
           </View>
         )}
 
-        {/* More */}
-        <Text style={[type.fieldLabel, { color: c.textMuted, marginTop: space.sm }]}>MORE</Text>
-        <Card padded={false}>
-          <MoreRow icon="git-branch-outline" label="Trips" onPress={() => open('trips')} />
-          <MoreRow icon="bar-chart-outline" label="Report" onPress={() => open('report')} />
-          <MoreRow icon="notifications-outline" label="Alerts" onPress={() => open('alerts')} />
-          <MoreRow icon="shapes-outline" label="Geofences" onPress={() => open('geofences')} />
-          {isOwner && <MoreRow icon="people-outline" label="Share with family" onPress={() => open('sharing')} />}
-          {isOwner && <MoreRow icon="share-social-outline" label="Share live location" onPress={() => shareLiveLocation(device).catch(() => {})} />}
-          <MoreRow
-            icon="navigate-outline"
-            label="Navigate to vehicle"
-            disabled={!hasPos}
-            onPress={() => Linking.openURL(`google.navigation:q=${state.lat},${state.lon}`).catch(() => Linking.openURL(`https://www.google.com/maps?q=${state.lat},${state.lon}`))}
-          />
-          <MoreRow icon="settings-outline" label="Settings" onPress={() => open('settings')} last />
-        </Card>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+type Slot = 'main' | 'backup';
+type DriverRow = ReturnType<typeof useDrivers>['data'] extends (infer R)[] | undefined ? R : never;
+const FIELD = { main: 'mainDriverId', backup: 'backupDriverId' } as const;
+const vehicleLabel = (v: { registrationNumber: string | null; name: string | null }) => v.registrationNumber || v.name || 'another vehicle';
+
 function DriverSection({ device, canEdit }: { device: TabProps['device']; canEdit: boolean }) {
   const c = useColors();
   const qc = useQueryClient();
   const { data: drivers = [] } = useDrivers();
-  const [pick, setPick] = useState<'main' | 'backup' | null>(null);
+  const [pick, setPick] = useState<Slot | null>(null);
+  const [conflict, setConflict] = useState<DriverRow | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const main = device.mainDriver ?? null;
   const backup = device.backupDriver ?? null;
+  const current = pick === 'main' ? main : backup;
 
-  async function patch(body: Record<string, string | null>) {
+  async function patch(deviceId: string, body: Record<string, string | null>) {
+    await api(`/devices/${deviceId}`, { method: 'PATCH', body });
+  }
+  async function refresh() {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ['device'] }),
+      qc.invalidateQueries({ queryKey: ['devices'] }),
+      qc.invalidateQueries({ queryKey: ['drivers'] }),
+    ]);
+  }
+  async function run(job: () => Promise<void>) {
     setBusy(true);
+    setError(null);
     try {
-      await api(`/devices/${device.id}`, { method: 'PATCH', body });
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ['device', device.id] }),
-        qc.invalidateQueries({ queryKey: ['devices'] }),
-        qc.invalidateQueries({ queryKey: ['drivers'] }),
-      ]);
+      await job();
+      await refresh();
+      setPick(null);
+      setConflict(null);
+    } catch (e) {
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
   }
 
-  const choices = drivers.filter((d) => d.id !== (pick === 'main' ? backup?.id : main?.id));
+  // Vehicles (other than this one) the driver already drives in this role.
+  const elsewhere = (d: DriverRow, slot: Slot) => (slot === 'main' ? d.mainOf : d.backupOf).filter((v) => v.id !== device.id);
+
+  /** `slot` of this vehicle gets `d`. Others they were driving: swapped to the old driver, or left empty. */
+  function assign(d: DriverRow, slot: Slot, others: DriverRow['mainOf'], swap: boolean) {
+    return run(async () => {
+      const field = FIELD[slot];
+      // Free the other vehicle(s) first (the old driver goes to the first one when swapping).
+      for (let i = 0; i < others.length; i += 1) {
+        await patch(others[i].id, { [field]: swap && i === 0 && current ? current.id : null });
+      }
+      await patch(device.id, { [field]: d.id });
+    });
+  }
+
+  function choose(d: DriverRow) {
+    if (!pick) return;
+    const others = elsewhere(d, pick);
+    if (others.length) setConflict(d);
+    else assign(d, pick, [], false);
+  }
+
+  const other = pick === 'main' ? backup : main;
+  const choices = drivers.filter((d) => d.id !== other?.id);
+  const free = choices.filter((d) => !pick || elsewhere(d, pick).length === 0);
+  const taken = choices.filter((d) => pick && elsewhere(d, pick).length > 0);
+  const closeAll = () => { setPick(null); setConflict(null); setError(null); };
+  const openPick = (s: Slot) => { setError(null); setPick(s); };
 
   return (
     <View>
-      <DriverCard role="MAIN" driver={main} canEdit={canEdit} onAdd={() => setPick('main')} onChange={() => setPick('main')} />
+      <DriverCard role="MAIN" driver={main} canEdit={canEdit} onAdd={() => openPick('main')} onChange={() => openPick('main')} />
       {canEdit && main && backup && (
         <View style={styles.swapWrap} pointerEvents="box-none">
-          <RoundButton icon="swap-vertical" label="Swap main and backup driver" onPress={() => !busy && patch({ mainDriverId: backup.id, backupDriverId: main.id })} size={40} iconSize={18} />
+          <Pressable
+            onPress={() => !busy && run(async () => { await patch(device.id, { mainDriverId: backup.id, backupDriverId: main.id }); })}
+            accessibilityRole="button"
+            accessibilityLabel="Swap main and backup driver"
+            style={[styles.swapBtn, { backgroundColor: c.dark ? c.surface : '#FFFFFF', borderColor: c.bg }]}
+          >
+            <DIcon name="swapV" size={18} strokeWidth={2.2} color={c.accent} />
+          </Pressable>
         </View>
       )}
-      <View style={{ height: space.md }} />
-      <DriverCard role="BACKUP" driver={backup} canEdit={canEdit} onAdd={() => setPick('backup')} onChange={() => setPick('backup')} />
+      <View style={{ height: 14 }} />
+      <DriverCard role="BACKUP" driver={backup} canEdit={canEdit} onAdd={() => openPick('backup')} onChange={() => openPick('backup')} />
 
-      <Sheet visible={!!pick} onClose={() => setPick(null)} title={pick === 'main' ? 'Main driver' : 'Backup driver'}>
-        <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: 2 }}>
-          {choices.map((d) => {
-            const on = (pick === 'main' ? main?.id : backup?.id) === d.id;
-            return (
-              <Pressable
-                key={d.id}
-                onPress={() => { const k = pick === 'main' ? 'mainDriverId' : 'backupDriverId'; setPick(null); patch({ [k]: d.id }); }}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: on }}
-                style={styles.pickRow}
-              >
-                <DriverAvatar driver={d} size={40} />
-                <Text style={[type.bodyStrong, { color: c.text, flex: 1 }]}>{d.name}</Text>
-                {on && <Ionicons name="checkmark-circle" size={22} color={c.text} />}
-              </Pressable>
-            );
-          })}
-          {choices.length === 0 && <Text style={[type.small, { color: c.textMuted }]}>No other drivers yet.</Text>}
-        </ScrollView>
-        <PillButton title="Add a new driver" icon="person-add-outline" variant="secondary" onPress={() => { setPick(null); router.push('/drivers/edit'); }} />
-        {(pick === 'main' ? main : backup) && (
-          <PillButton
-            title={`Remove ${pick === 'main' ? 'main' : 'backup'} driver`}
-            variant="danger"
-            onPress={() => { const k = pick === 'main' ? 'mainDriverId' : 'backupDriverId'; setPick(null); patch({ [k]: null }); }}
-          />
+      <Sheet visible={!!pick} onClose={closeAll} title={conflict ? 'Driver already assigned' : pick === 'main' ? 'Main driver' : 'Backup driver'}>
+        {conflict && pick ? (
+          <View style={{ gap: 12 }}>
+            <View style={styles.pickRow}>
+              <DriverAvatar driver={conflict} size={44} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text numberOfLines={1} style={[type.name, { color: c.text }]}>{conflict.name}</Text>
+                <Text numberOfLines={1} style={[type.small, { color: c.danger }]}>
+                  {pick === 'main' ? 'Main' : 'Backup'} driver of {elsewhere(conflict, pick).map(vehicleLabel).join(', ')}
+                </Text>
+              </View>
+            </View>
+            {current && (
+              <PillButton
+                title={`Swap with ${current.name.split(' ')[0]}`}
+                icon="swap-horizontal"
+                loading={busy}
+                onPress={() => assign(conflict, pick, elsewhere(conflict, pick), true)}
+              />
+            )}
+            <PillButton
+              title={`Replace and leave ${vehicleLabel(elsewhere(conflict, pick)[0])} empty`}
+              variant="secondary"
+              onPress={() => assign(conflict, pick, elsewhere(conflict, pick), false)}
+              disabled={busy}
+            />
+            <PillButton title="Cancel" variant="secondary" onPress={() => setConflict(null)} disabled={busy} />
+            {error ? <Text style={[type.small, { color: c.danger }]}>{error}</Text> : null}
+          </View>
+        ) : (
+          <>
+            <ScrollView style={{ maxHeight: 380 }} contentContainerStyle={{ gap: 2 }}>
+              {free.length > 0 && <Text style={[type.caption, styles.group, { color: c.textMuted }]}>AVAILABLE</Text>}
+              {free.map((d) => {
+                const on = current?.id === d.id;
+                return (
+                  <Pressable key={d.id} onPress={() => (on ? setPick(null) : choose(d))} disabled={busy} accessibilityRole="radio" accessibilityState={{ selected: on }} style={styles.pickRow}>
+                    <DriverAvatar driver={d} size={44} />
+                    <Text numberOfLines={1} style={[type.bodyStrong, { color: c.text, flex: 1 }]}>{d.name}</Text>
+                    {on && <DIcon name="check" size={20} strokeWidth={2.6} color={c.accent} />}
+                  </Pressable>
+                );
+              })}
+              {taken.length > 0 && <Text style={[type.caption, styles.group, { color: c.textMuted }]}>ALREADY ASSIGNED</Text>}
+              {taken.map((d) => (
+                <Pressable key={d.id} onPress={() => choose(d)} disabled={busy} accessibilityRole="button" accessibilityLabel={`${d.name}, drives ${elsewhere(d, pick!).map(vehicleLabel).join(', ')}. Swap or replace`} style={styles.pickRow}>
+                  <DriverAvatar driver={d} size={44} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text numberOfLines={1} style={[type.bodyStrong, { color: c.text }]}>{d.name}</Text>
+                    <Text numberOfLines={1} style={[type.caption, { color: c.danger, letterSpacing: 0 }]}>Drives {elsewhere(d, pick!).map(vehicleLabel).join(', ')}</Text>
+                  </View>
+                  <View style={[styles.swapChip, { backgroundColor: c.dangerSoft }]}>
+                    <DIcon name="swap" size={18} strokeWidth={2.2} color={c.danger} />
+                  </View>
+                </Pressable>
+              ))}
+              {choices.length === 0 && <Text style={[type.small, { color: c.textMuted }]}>No other drivers yet.</Text>}
+            </ScrollView>
+            {error ? <Text style={[type.small, { color: c.danger }]}>{error}</Text> : null}
+            <PillButton title="Add a new driver" icon="person-add-outline" variant="secondary" onPress={() => { closeAll(); router.push('/drivers/edit'); }} />
+            {current && (
+              <PillButton
+                title={`Remove ${pick === 'main' ? 'main' : 'backup'} driver`}
+                variant="danger"
+                loading={busy}
+                onPress={() => run(async () => { await patch(device.id, { [FIELD[pick!]]: null }); })}
+              />
+            )}
+          </>
         )}
       </Sheet>
     </View>
@@ -231,9 +329,9 @@ function DriverCard({ role, driver, canEdit, onAdd, onChange }: {
   const c = useColors();
   if (!driver) {
     return (
-      <Pressable disabled={!canEdit} onPress={onAdd} accessibilityRole="button" style={[styles.driverCard, styles.dashed, { borderColor: c.border }]}>
-        <View style={[styles.avatar, { backgroundColor: c.surface }]}>
-          <Ionicons name="add" size={26} color={c.text} />
+      <Pressable disabled={!canEdit} onPress={onAdd} accessibilityRole="button" style={[styles.driverCard, styles.dashed, { borderColor: c.offline }]}>
+        <View style={[styles.avatar, { backgroundColor: c.dark ? c.surface : '#FFFFFF' }]}>
+          <DIcon name="plus" size={24} strokeWidth={2.2} color={c.accent} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[type.caption, { color: c.textMuted }]}>{role}</Text>
@@ -244,16 +342,20 @@ function DriverCard({ role, driver, canEdit, onAdd, onChange }: {
   }
   return (
     <Card style={styles.driverCard} onPress={() => router.push(`/drivers/edit?id=${driver.id}`)}>
-      <DriverAvatar driver={driver} size={56} />
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[type.caption, { color: c.text, fontFamily: type.fieldLabel.fontFamily }]}>{role}</Text>
+      <DriverAvatar driver={driver} size={60} />
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Text style={[type.caption, { color: role === 'MAIN' ? c.accent : c.textMuted, fontFamily: type.fieldLabel.fontFamily }]}>{role}</Text>
         <Text numberOfLines={1} style={[type.name, { color: c.text }]}>{driver.name}</Text>
         {driver.phone ? <Text numberOfLines={1} style={[type.small, { color: c.textMuted }]}>{driver.phone}</Text> : null}
       </View>
       {driver.phone ? (
-        <RoundButton icon="call-outline" label={`Call ${driver.name}`} onPress={() => Linking.openURL(`tel:${driver.phone!.replace(/[^+\d]/g, '')}`)} size={40} iconSize={18} />
+        <RoundButton icon="call-outline" label={`Call ${driver.name}`} onPress={() => Linking.openURL(`tel:${driver.phone!.replace(/[^+\d]/g, '')}`)} size={44} iconSize={18} />
       ) : null}
-      {canEdit && <RoundButton icon="create-outline" label={`Change ${role.toLowerCase()} driver`} onPress={onChange} size={40} iconSize={18} />}
+      {canEdit && (
+        <Pressable onPress={onChange} accessibilityRole="button" accessibilityLabel={`Change ${role.toLowerCase()} driver`} style={[styles.editCircle, { backgroundColor: c.surface }]}>
+          <DIcon name="edit" size={18} strokeWidth={2} />
+        </Pressable>
+      )}
     </Card>
   );
 }
@@ -381,11 +483,16 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md },
   tile: { width: '47.5%', flexGrow: 1, flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md, borderRadius: radius.md },
   tileIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  driverCard: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.card },
+  driverCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 20 },
   dashed: { borderWidth: 1.5, borderStyle: 'dashed' },
-  avatar: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
-  swapWrap: { position: 'absolute', left: 0, right: 0, top: '50%', marginTop: -20, alignItems: 'center', zIndex: 2 },
+  avatar: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center' },
+  swapWrap: { position: 'absolute', left: 0, right: 0, top: '50%', marginTop: -22, alignItems: 'center', zIndex: 2 },
   pickRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 56 },
+  group: { marginTop: 8, marginBottom: 2, letterSpacing: 1 },
+  swapChip: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  swapBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 3, alignItems: 'center', justifyContent: 'center', elevation: 3, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
+  editBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  editCircle: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   bar: { height: 8, borderRadius: 4, overflow: 'hidden' },
   barFill: { height: 8, borderRadius: 4 },
   moreRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, minHeight: 52 },
