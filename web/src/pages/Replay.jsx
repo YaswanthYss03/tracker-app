@@ -2,6 +2,7 @@
 // route(s) with a moving dot, the dial shows the speed, the line chart shows speed over time.
 // Also used inside a vehicle as "Replay a day" (locked to that vehicle).
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { useQueries } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useFleet } from '../lib/data';
@@ -31,11 +32,13 @@ export function ReplayView({ lockedId }) {
   const today = isoDay();
   const sorted = useMemo(() => [...devices].sort((a, b) => plateOrName(a).localeCompare(plateOrName(b))), [devices]);
   const colorOf = (id) => ROUTE_COLORS[Math.max(0, sorted.findIndex((d) => d.id === id)) % ROUTE_COLORS.length];
+  const [params] = useSearchParams();
   const [compare, setCompare] = useState(false);
-  const [selected, setSelected] = useState(lockedId ? [lockedId] : []);
-  const [date, setDate] = useState(today);
+  const [selected, setSelected] = useState(lockedId ? [lockedId] : params.get('v') ? [params.get('v')] : []);
+  const qDate = params.get('date');
+  const [date, setDate] = useState(qDate && /^\d{4}-\d{2}-\d{2}$/.test(qDate) && qDate <= today ? qDate : today);
   const [fromText, setFrom] = useState('00:00');
-  const [toText, setTo] = useState(hhmm());
+  const [toText, setTo] = useState(qDate && qDate < today ? '23:59' : hhmm());
   const [open, setOpen] = useState(null); // trip shown in the side panel
   const pb = usePlayback(12_000);
 
@@ -123,10 +126,11 @@ export function ReplayView({ lockedId }) {
             <ReplayBar progress={pb.progress} playing={pb.playing} onToggle={pb.toggle} onSeek={pb.seek} disabled={!hasRoute} label={hasRoute ? clock : undefined} />
           </Card>
           {hasRoute && (
-            <Card title="Speed" action={<span className="muted small">km/h over time</span>}>
+            <Card title="Speed" action={<span className="muted small">Click the chart to jump there</span>}>
               <SpeedChart
                 series={pointsBy.filter((r) => r.points.length > 1).map((r) => ({ color: compare ? r.color : 'var(--accent)', points: r.points.map((p) => [Date.parse(p.t), p.speed ?? 0]) }))}
                 cursor={playing ? pb.progress : null}
+                onSeek={pb.seek}
                 height={170}
               />
               {compare && <div className="legend" style={{ marginTop: 8 }}>{pointsBy.map((r) => <span key={r.id}><i style={{ background: r.color }} />{plateOrName(byId.get(r.id))}</span>)}</div>}

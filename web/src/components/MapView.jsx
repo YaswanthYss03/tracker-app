@@ -27,7 +27,8 @@ function markerHtml(m, showLabels) {
     '<div class="core"></div><div class="ring"></div><div class="ring b"></div>' +
     `<div class="bub">${art(m.vehicle)}</div><div class="tag">${esc(m.label || '')}</div></div>`;
 }
-const keyOf = (m, showLabels) => [m.kind, m.fill, m.ring, m.dashed, m.selected, m.vehicle, m.label, showLabels].join('|');
+const keyOf = (m, showLabels) => [m.kind, m.fill, m.ring, m.dashed, m.selected, m.vehicle, m.label, m.tip, showLabels].join('|');
+const tipOptions = { direction: 'top', offset: [0, -28], className: 'mk-tip', opacity: 1 };
 
 export default function MapCanvas({
   ref, markers = [], routes = [], dots = [], circles = [], polygons = [], fitTo, fitKey, follow, satellite = false,
@@ -93,6 +94,7 @@ export default function MapCanvas({
       if (!o) {
         const marker = L.marker([d.lat, d.lon], { icon: L.divIcon({ className: '', html: markerHtml(d, showLabels), iconSize: [0, 0] }), keyboard: false, zIndexOffset: d.selected ? 1000 : 0 });
         marker.on('click', (e) => { L.DomEvent.stopPropagation(e); cb.current.onMarkerClick?.(d.id); });
+        if (d.tip) marker.bindTooltip(d.tip, tipOptions);
         marker.addTo(m);
         o = { marker, key, to: [d.lat, d.lon], last: performance.now() };
         store.set(d.id, o);
@@ -100,6 +102,7 @@ export default function MapCanvas({
         if (o.key !== key) {
           o.marker.setIcon(L.divIcon({ className: '', html: markerHtml(d, showLabels), iconSize: [0, 0] }));
           o.marker.setZIndexOffset(d.selected ? 1000 : 0);
+          if (d.tip) { if (o.marker.getTooltip()) o.marker.setTooltipContent(d.tip); else o.marker.bindTooltip(d.tip, tipOptions); }
           o.key = key;
         }
         glide(o, d.lat, d.lon);
@@ -200,7 +203,7 @@ function glide(o, lat, lon) {
  * A map card with the usual buttons: map / satellite, zoom, show all, and a bigger / smaller toggle.
  * Pass the same props as MapCanvas. `height` is the normal height in px; `tools` hides the buttons.
  */
-export function MapView({ height = 360, tools = true, expandable = false, fitButton = true, note, className = '', style, ...rest }) {
+export function MapView({ height = 360, tools = true, expandable = false, fitButton = true, note, overlay, className = '', style, ...rest }) {
   const canvas = useRef(null);
   const [sat, setSat] = useState(false);
   const [big, setBig] = useState(false);
@@ -227,6 +230,7 @@ export function MapView({ height = 360, tools = true, expandable = false, fitBut
           )}
         </div>
       )}
+      {overlay && <div className="map-overlay">{overlay}</div>}
       {note && <div className="map-note">{note}</div>}
     </div>
   );

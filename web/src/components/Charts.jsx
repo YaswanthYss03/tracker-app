@@ -65,8 +65,9 @@ function useWidth() {
  * Speed (km/h) over time as a line chart. `points` = one line ([ms, speed]);
  * `series` = several coloured lines. `cursor` 0..1 draws a marker.
  */
-export function SpeedChart({ points, series, height = 160, cursor }) {
+export function SpeedChart({ points, series, height = 160, cursor, onSeek }) {
   const [ref, w] = useWidth();
+  const [hover, setHover] = useState(null);
   const lines = series || [{ points: points || [], color: 'var(--accent)' }];
   const all = lines.flatMap((l) => l.points);
   const pad = { l: 34, r: 8, t: 10, b: 22 };
@@ -80,8 +81,20 @@ export function SpeedChart({ points, series, height = 160, cursor }) {
   const clock = (t) => new Date(t).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
   const cx = cursor != null ? pad.l + cursor * (w - pad.l - pad.r) : null;
   const single = lines.length === 1;
+  // Nearest point of the first line to the mouse, for the readout.
+  const nearest = (clientX) => {
+    const rect = ref.current.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (clientX - rect.left - pad.l) / Math.max(1, w - pad.l - pad.r)));
+    const t = t0 + frac * (t1 - t0);
+    let best = lines[0].points[0];
+    for (const p of lines[0].points) if (Math.abs(p[0] - t) < Math.abs(best[0] - t)) best = p;
+    return { frac, p: best };
+  };
   return (
-    <div ref={ref} style={{ width: '100%', height }}>
+    <div ref={ref} className="chart-wrap" style={{ width: '100%', height, cursor: onSeek ? 'pointer' : 'crosshair' }}
+      onMouseMove={(e) => all.length > 1 && setHover(nearest(e.clientX))} onMouseLeave={() => setHover(null)}
+      onClick={(e) => onSeek && all.length > 1 && onSeek(nearest(e.clientX).frac)}>
+      {hover && single && <div className="chart-tip" style={{ left: x(hover.p[0]), top: y(hover.p[1]) - 8 }}>{hover.p[1]} km/h, {clock(hover.p[0])}</div>}
       {w > 0 && all.length > 1 && (
         <svg width={w} height={height} role="img" aria-label={`Speed chart, top ${Math.max(0, ...all.map((p) => p[1]))} km/h`}>
           <defs>
@@ -105,6 +118,7 @@ export function SpeedChart({ points, series, height = 160, cursor }) {
           <text x={pad.l} y={height - 4} fontSize="11" fill="var(--muted)">{clock(t0)}</text>
           <text x={w - pad.r} y={height - 4} fontSize="11" fill="var(--muted)" textAnchor="end">{clock(t1)}</text>
           {cx != null && <line x1={cx} x2={cx} y1={pad.t} y2={y(0)} stroke="var(--ink)" strokeWidth="1" />}
+          {hover && <><line x1={x(hover.p[0])} x2={x(hover.p[0])} y1={pad.t} y2={y(0)} stroke="var(--faint)" strokeDasharray="3 3" /><circle cx={x(hover.p[0])} cy={y(hover.p[1])} r="4.5" fill="var(--accent)" stroke="var(--bg)" strokeWidth="2" /></>}
         </svg>
       )}
     </div>
@@ -124,7 +138,7 @@ export function BarChart({ items, color = 'accent', scroll, height = 150, onPick
       {items.map((it, i) => {
         const Tag = onPick ? 'button' : 'div';
         return (
-          <Tag key={i} type={onPick ? 'button' : undefined} className={`bar-col ${onPick ? 'pick' : ''}`} style={scroll ? { minWidth: 26, flex: '0 0 26px' } : undefined} onClick={onPick ? () => onPick(i) : undefined} aria-label={`${it.label}: ${it.text || it.value}`}>
+          <Tag key={i} type={onPick ? 'button' : undefined} title={`${it.label}${it.sub ? ' ' + it.sub : ''}: ${it.text || it.value}`} className={`bar-col ${onPick ? 'pick' : ''}`} style={scroll ? { minWidth: 26, flex: '0 0 26px' } : undefined} onClick={onPick ? () => onPick(i) : undefined} aria-label={`${it.label}: ${it.text || it.value}`}>
             <div className="v">{it.text}</div>
             <div className={`b ${!it.value ? '' : activeIndex === i ? 'on' : color === 'ink' ? 'ink' : 'on'}`} style={{ height: Math.max(4, (it.value / max) * (height - 56)) }} />
             <div className="l">{it.label}</div>
@@ -133,5 +147,21 @@ export function BarChart({ items, color = 'accent', scroll, height = 150, onPick
         );
       })}
     </div>
+  );
+}
+
+/** Small trend line for a KPI card. */
+export function Sparkline({ values, width = 96, height = 30 }) {
+  const max = Math.max(1, ...values);
+  const step = width / Math.max(1, values.length - 1);
+  const pts = values.map((v, i) => [i * step, height - 3 - (v / max) * (height - 8)]);
+  const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+  const last = pts[pts.length - 1];
+  return (
+    <svg width={width} height={height} aria-hidden style={{ overflow: 'visible' }}>
+      <path d={`${d} L${width},${height} L0,${height} Z`} fill="var(--accent)" opacity="0.1" />
+      <path d={d} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={last[0]} cy={last[1]} r="3" fill="var(--accent)" />
+    </svg>
   );
 }

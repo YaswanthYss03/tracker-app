@@ -1,14 +1,13 @@
 // Signed-in shell: sidebar navigation, top bar (search, alerts, theme, account) and the page.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth';
 import { FleetProvider, useFleet, useUnreadAlerts } from '../lib/data';
-import { initials, plateOrName } from '../lib/format';
-import { STATUS_LABEL, statusGroup } from '../lib/status';
+import { initials } from '../lib/format';
 import { setPref, usePref } from '../lib/prefs';
 import Icon from './Icon';
+import CommandPalette from './CommandPalette';
 import { IconButton, Menu, MenuItem } from './ui';
-import { VehicleThumb } from './vehicle';
 
 const NAV = [
   ['/', 'Dashboard', 'dashboard', true],
@@ -61,46 +60,18 @@ function Sidebar({ open, onClose }) {
   );
 }
 
-/** Jump to a vehicle by plate, name or driver. */
-function VehicleSearch() {
-  const { devices, stateOf } = useFleet();
-  const nav = useNavigate();
-  const [q, setQ] = useState('');
-  const [open, setOpen] = useState(false);
-  const box = useRef(null);
-  useEffect(() => {
-    const down = (e) => { if (!box.current?.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', down);
-    return () => document.removeEventListener('mousedown', down);
-  }, []);
-  const hits = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return [];
-    return devices.filter((d) => [d.registrationNumber, d.name, d.driverName, d.imei].some((v) => v?.toLowerCase().includes(s))).slice(0, 6);
-  }, [q, devices]);
+function PaletteTrigger({ onOpen }) {
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform || '');
   return (
-    <div className="search" ref={box}>
-      <Icon name="search" size={18} className="icon" />
-      <input value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} placeholder="Search vehicle, plate or driver" aria-label="Search vehicles" />
-      {open && q.trim() && (
-        <div className="search-results">
-          {hits.length === 0 && <div className="muted small" style={{ padding: 12 }}>No vehicle matches.</div>}
-          {hits.map((d) => (
-            <button key={d.id} type="button" onClick={() => { setOpen(false); setQ(''); nav(`/vehicles/${d.id}`); }}>
-              <VehicleThumb device={d} size="sm" />
-              <div style={{ minWidth: 0 }}>
-                <div className="plate">{plateOrName(d)}</div>
-                <div className="tiny muted">{d.driverName || 'No driver'} - {STATUS_LABEL[statusGroup(stateOf(d))]}</div>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <button type="button" className="cmd-trigger" onClick={onOpen} aria-label="Search vehicles, pages and actions">
+      <Icon name="search" size={18} />
+      <span className="ellipsis">Search vehicles, pages and actions</span>
+      <kbd>{mac ? 'Cmd K' : 'Ctrl K'}</kbd>
+    </button>
   );
 }
 
-function Topbar({ onMenu }) {
+function Topbar({ onMenu, onSearch }) {
   const { user, logout } = useAuth();
   const { connected } = useFleet();
   const unread = useUnreadAlerts();
@@ -110,7 +81,7 @@ function Topbar({ onMenu }) {
   return (
     <header className="topbar">
       <IconButton className="menu-btn" icon="menu" label="Open menu" onClick={onMenu} />
-      <VehicleSearch />
+      <PaletteTrigger onOpen={onSearch} />
       <div className="right row" style={{ gap: 6 }}>
         {connected && <span className="live-dot" title="Live updates are on">Live</span>}
         <IconButton icon={dark ? 'sun' : 'moon'} label={dark ? 'Switch to light' : 'Switch to dark'} onClick={() => setPref('theme', dark ? 'light' : 'dark')} />
@@ -134,7 +105,17 @@ function Topbar({ onMenu }) {
 
 export function CustomerLayout() {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState(false);
   const loc = useLocation();
+  // Ctrl+K / Cmd+K, or "/" outside a text field, opens the search.
+  useEffect(() => {
+    const onKey = (e) => {
+      const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
+      if ((e.key === 'k' && (e.ctrlKey || e.metaKey)) || (e.key === '/' && !typing)) { e.preventDefault(); setSearch(true); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
   useEffect(() => { setOpen(false); window.scrollTo(0, 0); }, [loc.pathname]);
   return (
     <FleetProvider>
@@ -142,10 +123,11 @@ export function CustomerLayout() {
         <Sidebar open={open} onClose={() => setOpen(false)} />
         <div className={`scrim ${open ? 'show' : ''}`} onClick={() => setOpen(false)} />
         <div className="main">
-          <Topbar onMenu={() => setOpen(true)} />
+          <Topbar onMenu={() => setOpen(true)} onSearch={() => setSearch(true)} />
           <Outlet />
         </div>
       </div>
+      <CommandPalette open={search} onClose={() => setSearch(false)} />
     </FleetProvider>
   );
 }

@@ -1,5 +1,6 @@
 // Drivers: everyone who drives your vehicles. Click one to edit, or add a new driver.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { useDrivers } from '../lib/data';
 import { dmy, plateOrName } from '../lib/format';
 import Icon from '../components/Icon';
@@ -18,6 +19,8 @@ function licenceState(iso) {
 export default function Drivers() {
   const { data: drivers = [], isLoading } = useDrivers();
   const [form, setForm] = useState(null); // 'new' | driver
+  const [params, setParams] = useSearchParams();
+  useEffect(() => { if (params.get('add')) { setForm('new'); setParams({}, { replace: true }); } }, [params, setParams]);
   return (
     <div className="page">
       <PageHead title="Drivers" sub={`${drivers.length} ${drivers.length === 1 ? 'driver' : 'drivers'}`}>

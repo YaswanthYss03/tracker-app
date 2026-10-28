@@ -19,6 +19,7 @@ export default function MapPage() {
   const [params, setParams] = useSearchParams();
   const labels = usePref('platesOnMap');
   const [filter, setFilter] = useState('all');
+  const [hover, setHover] = useState(null);
   const rows = useMemo(
     () => fleetRows(devices, stateOf).sort((a, b) => STATUS_ORDER[a.g] - STATUS_ORDER[b.g] || plateOrName(a.d).localeCompare(plateOrName(b.d))),
     [devices, stateOf],
@@ -39,7 +40,7 @@ export default function MapPage() {
   const { address, loading: addrLoading } = useAddress(pos?.lat, pos?.lon);
   const pick = (id) => { setSelectedId(id); setParams({ v: id }, { replace: true }); };
   const step = (by) => rows.length && pick(rows[(index + by + rows.length) % rows.length].d.id);
-  const markers = fleetMarkers(rows, selectedId);
+  const markers = fleetMarkers(rows, hover || selectedId);
   const [fitCount, setFitCount] = useState(0);
 
   return (
@@ -57,10 +58,10 @@ export default function MapPage() {
             ))}
           </div>
         </div>
-        <div className="list">
+        <div className="list" onMouseLeave={() => setHover(null)}>
           {isLoading ? <div className="stack" style={{ padding: 8 }}><Skeleton h={60} /><Skeleton h={60} /></div> : shown.length === 0 ? (
             <Empty icon="car" title={devices.length ? 'No vehicle in this status' : 'No vehicles yet'} />
-          ) : shown.map(({ d, s }) => <VehicleRow key={d.id} device={d} state={s} selected={d.id === selectedId} onClick={() => pick(d.id)} />)}
+          ) : shown.map(({ d, s }) => <div key={d.id} onMouseEnter={() => setHover(d.id)}><VehicleRow device={d} state={s} selected={d.id === selectedId} onClick={() => pick(d.id)} /></div>)}
         </div>
         {sel && (
           <div className="map-sel">

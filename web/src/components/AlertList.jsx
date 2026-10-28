@@ -1,5 +1,6 @@
 // Alerts grouped by day, with filter chips. Used for one vehicle and for all vehicles.
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { ALERT_ICONS, SEVERE_ALERTS, alertText, groupByDay } from '../lib/format';
 import Icon from './Icon';
 import { Chip, Empty } from './ui';
@@ -30,6 +31,7 @@ const tone = (t) => {
 };
 
 export default function AlertList({ items, filters, showVehicle, onOpen, isNew, loading }) {
+  const nav = useNavigate();
   const [filter, setFilter] = useState('all');
   const [limit, setLimit] = useState(60);
   const fn = filters.find((f) => f[0] === filter)?.[2];
@@ -53,7 +55,7 @@ export default function AlertList({ items, filters, showVehicle, onOpen, isNew, 
               <span className={`ico ${tone(e.type)}`}><Icon name={ALERT_ICONS[e.type] || 'bell'} size={16} /></span>
               <div className="body">
                 <div className="t">{alertText(e)}</div>
-                <div className="d">{showVehicle && e.deviceName ? <span className="plate">{e.deviceName}</span> : null}{showVehicle && e.deviceName ? ' - ' : ''}{new Date(e.time).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</div>
+                <div className="d">{showVehicle && e.deviceName ? <span className="plate copyable" role="link" title="Open this vehicle" style={{ padding: '1px 4px', margin: '0 -4px', cursor: 'pointer' }} onClick={(ev) => { ev.stopPropagation(); nav(`/vehicles/${e.deviceId}`); }}>{e.deviceName}</span> : null}{showVehicle && e.deviceName ? ' - ' : ''}{new Date(e.time).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</div>
               </div>
               {isNew?.(e) && <span className="dot" style={{ background: 'var(--accent)' }} aria-label="New" />}
               {e.lat != null && <a className="icon-btn sm" href={`https://www.google.com/maps?q=${e.lat},${e.lon}`} target="_blank" rel="noreferrer" aria-label="Open on map" onClick={(ev) => ev.stopPropagation()}><Icon name="pin" size={16} /></a>}

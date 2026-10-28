@@ -11,6 +11,7 @@ import AlertList, { VEHICLE_FILTERS } from '../components/AlertList';
 import Icon from '../components/Icon';
 import VehicleForm from '../components/VehicleForm';
 import { Button, Card, ErrorBox, Skeleton, Tabs } from '../components/ui';
+import { useToast } from '../lib/toast';
 import { VehicleThumb } from '../components/vehicle';
 import { ReplayView } from './Replay';
 import Geofences from './vehicle/Geofences';
@@ -38,6 +39,7 @@ function VehicleAlerts({ device }) {
 export default function VehicleDetail() {
   const { id, section = 'overview' } = useParams();
   const nav = useNavigate();
+  const toast = useToast();
   const { device, state, isLoading, error } = useDevice(id);
   const [sharing, setSharing] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -61,7 +63,7 @@ export default function VehicleDetail() {
           <VehicleThumb device={device} dimmed={g === 'offline'} />
           <div>
             <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
-              <h1 className="plate" style={{ fontSize: 26 }}>{plateOrName(device)}</h1>
+              <h1 className="plate copyable" style={{ fontSize: 26, padding: '0 6px', margin: '0 -6px' }} title="Click to copy the plate" onClick={() => navigator.clipboard?.writeText(plateOrName(device)).then(() => toast('Plate copied'))}>{plateOrName(device)}</h1>
               <span className={`pill ${g === 'moving' ? 'ok' : g === 'nogps' ? 'warn' : ''}`}><span className={`dot ${g}`} />{STATUS_LABEL[g]}</span>
               {!isOwner && <span className="pill">Shared with you</span>}
             </div>

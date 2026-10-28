@@ -9,6 +9,7 @@ import { colorOf } from '../../lib/vehicles';
 import Icon from '../../components/Icon';
 import { MapView } from '../../components/MapView';
 import { Button, Card } from '../../components/ui';
+import { useToast } from '../../lib/toast';
 import { VehicleThumb } from '../../components/vehicle';
 import DriverCard from './DriverCard';
 import ServiceCard from './ServiceCard';
@@ -16,6 +17,7 @@ import TrackerCard from './TrackerCard';
 
 export default function Overview({ device, state, isOwner }) {
   const nav = useNavigate();
+  const toast = useToast();
   const g = statusGroup(state);
   const hasPos = state.lat != null && state.lon != null;
   const { address, loading } = useAddress(state.lat, state.lon);
@@ -29,7 +31,7 @@ export default function Overview({ device, state, isOwner }) {
         <Card>
           <div className="row" style={{ gap: 20, alignItems: 'center' }}>
             <VehicleThumb device={device} size="lg" dimmed={g === 'offline'} />
-            <div style={{ minWidth: 0, flex: 1 }}>
+            <button type="button" className="link-stat" style={{ minWidth: 0, flex: 1 }} onClick={() => nav(`/map?v=${device.id}`)} title="Show on the live map">
               {moving ? (
                 <div style={{ fontSize: 44, fontWeight: 700, letterSpacing: '-0.04em', lineHeight: 1.05 }}>{state.speed ?? 0}<span style={{ fontSize: 16, fontWeight: 500, color: 'var(--muted)', letterSpacing: 0, marginLeft: 6 }}>km/h</span></div>
               ) : (
@@ -40,14 +42,14 @@ export default function Overview({ device, state, isOwner }) {
                 <Icon name="pin" size={14} />
                 <span className="ellipsis">{hasPos ? address ? shortAddress(address, 60) : loading ? 'Finding address...' : `${state.lat.toFixed(5)}, ${state.lon.toFixed(5)}` : 'No GPS position yet'}</span>
               </div>
-            </div>
+            </button>
           </div>
           <hr className="divider" style={{ margin: '18px 0' }} />
           <div className="row wrap" style={{ gap: 28 }}>
-            <div className="stat"><b>{fmt(summary?.totalKm)} km</b><span>Total distance</span></div>
-            <div className="stat"><b>{fmt(summary?.drivingHours)} h</b><span>Driving hours</span></div>
-            <div className="stat"><b>{fmt(summary?.avgSpeed)} km/h</b><span>Average speed</span></div>
-            <div className="stat"><b>{Math.round(device.todayKm ?? 0)} km</b><span>Today</span></div>
+            <button type="button" className="link-stat stat" onClick={() => nav(`/vehicles/${device.id}/report`)} title="Open the report"><b>{fmt(summary?.totalKm)} km</b><span>Total distance</span></button>
+            <button type="button" className="link-stat stat" onClick={() => nav(`/vehicles/${device.id}/report`)} title="Open the report"><b>{fmt(summary?.drivingHours)} h</b><span>Driving hours</span></button>
+            <button type="button" className="link-stat stat" onClick={() => nav(`/vehicles/${device.id}/report`)} title="Open the report"><b>{fmt(summary?.avgSpeed)} km/h</b><span>Average speed</span></button>
+            <button type="button" className="link-stat stat" onClick={() => nav(`/replay?v=${device.id}`)} title="Replay today"><b>{Math.round(device.todayKm ?? 0)} km</b><span>Today</span></button>
             <Button className="right" variant="soft-red" icon="replay" onClick={() => nav(`/vehicles/${device.id}/replay`)}>Replay a day</Button>
           </div>
         </Card>

@@ -5,7 +5,7 @@ const listeners = new Set();
 const read = (k, d) => {
   try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; }
 };
-const state = { theme: read('pk.theme', 'system'), platesOnMap: read('pk.platesOnMap', true) };
+const state = { theme: read('pk.theme', 'system'), platesOnMap: read('pk.platesOnMap', true), vehiclesView: read('pk.vehiclesView', 'table') };
 
 function apply() {
   const el = document.documentElement;

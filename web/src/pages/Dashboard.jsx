@@ -1,41 +1,55 @@
-// Dashboard: the whole fleet at a glance. Numbers, live map, this week's distance, alerts, service.
+// Dashboard: the fleet at a glance, and what needs attention. Everything on it is clickable.
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQueries } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { useAlertsFeed, useFleet, useUnreadAlerts } from '../lib/data';
+import { useAuth } from '../lib/auth';
+import { useAlertsFeed, useDrivers, useFleet, useUnreadAlerts } from '../lib/data';
 import { fleetMarkers, fleetRows, countByGroup } from '../lib/fleet';
-import { ALERT_ICONS, alertText, dayLabel, isoDay, km, plateOrName, timeAgo } from '../lib/format';
+import { ALERT_ICONS, SEVERE_ALERTS, agoText, alertText, dayLabel, isoDay, km, plateOrName } from '../lib/format';
 import { DUE_SOON_DAYS, daysUntil, dueText } from '../lib/service';
-import { GROUPS, SEVERE_ALERTS_SET, STATUS_LABEL, STATUS_RING } from '../lib/dashboardHelpers';
+import { GROUPS, STATUS_LABEL, STATUS_RING } from '../lib/status';
+import { BarChart, Sparkline } from '../components/Charts';
 import Icon from '../components/Icon';
-import { BarChart } from '../components/Charts';
 import { MapView } from '../components/MapView';
-import { Button, Card, Empty, Kpi, PageHead, Skeleton } from '../components/ui';
+import { Button, Card, Chip, Empty, PageHead, Skeleton } from '../components/ui';
 import VehicleForm from '../components/VehicleForm';
 import VehicleRow from '../components/VehicleRow';
 import { VehicleThumb } from '../components/vehicle';
 
 const DAY = 86_400_000;
+const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; };
+
+function Kpi({ icon, tone, label, value, unit, foot, extra, to }) {
+  const nav = useNavigate();
+  return (
+    <button type="button" className="card" onClick={() => nav(to)} aria-label={`${label}: ${value}${unit ? ` ${unit}` : ''}. Open`}>
+      <div className="kpi">
+        <div className="kpi-top"><span className={`kpi-icon ${tone || ''}`}><Icon name={icon} size={18} /></span>{label}<Icon name="chevR" size={16} className="go" /></div>
+        <div className="row between" style={{ alignItems: 'flex-end' }}>
+          <div className="kpi-value">{value}{unit && <small>{unit}</small>}</div>
+          {extra}
+        </div>
+        <div className="kpi-foot">{foot}</div>
+      </div>
+    </button>
+  );
+}
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const { devices, stateOf, isLoading } = useFleet();
+  const { data: drivers = [] } = useDrivers();
   const nav = useNavigate();
   const [adding, setAdding] = useState(false);
+  const [filter, setFilter] = useState('all');
+  const [hover, setHover] = useState(null);
   const feed = useAlertsFeed();
   const unread = useUnreadAlerts();
   const rows = useMemo(() => fleetRows(devices, stateOf), [devices, stateOf]);
   const counts = countByGroup(rows);
   const total = devices.length;
   const kmToday = devices.reduce((a, d) => a + (d.todayKm || 0), 0);
-  const online = total - counts.offline;
-
-  // service due soon or overdue, soonest first
-  const service = devices
-    .filter((d) => d.serviceDue)
-    .map((d) => ({ d, days: daysUntil(d.serviceDue) }))
-    .filter((x) => x.days <= DUE_SOON_DAYS)
-    .sort((a, b) => a.days - b.days);
 
   // distance for the last 7 days, summed over all vehicles
   const week = useMemo(() => Array.from({ length: 7 }, (_, i) => isoDay(Date.now() - (6 - i) * DAY)), []);
@@ -48,114 +62,167 @@ export default function Dashboard() {
   });
   const perDay = week.map((day) => reports.reduce((a, q) => a + (q.data?.data?.days || []).filter((x) => x.day === day).reduce((s, x) => s + x.distanceKm, 0), 0));
   const weekTotal = perDay.reduce((a, b) => a + b, 0);
-  const alerts = (feed.data || []).slice(0, 7);
+  const yesterday = perDay[5];
+  const deltaPct = yesterday > 0 ? Math.round(((kmToday - yesterday) / yesterday) * 100) : null;
+
+  const alerts = (feed.data || []).slice(0, 6);
   const alertsToday = (feed.data || []).filter((e) => Date.now() - Date.parse(e.time) < DAY).length;
-  const markers = fleetMarkers(rows);
+
+  // What needs attention, most urgent first.
+  const attention = useMemo(() => {
+    const out = [];
+    for (const { d, s, g } of rows) {
+      const name = plateOrName(d);
+      if (g === 'nogps') out.push({ k: `g${d.id}`, tone: 'amber', icon: 'gpsOff', title: `${name} has no GPS fix`, sub: 'Ignition on, no location for 15 minutes', to: `/vehicles/${d.id}`, rank: 2 });
+      if (g === 'offline' && s?.lastSeenAt && Date.now() - Date.parse(s.lastSeenAt) > 3_600_000) out.push({ k: `o${d.id}`, tone: '', icon: 'wifiOff', title: `${name} is offline`, sub: `Last seen ${agoText(s.lastSeenAt).toLowerCase()}`, to: `/vehicles/${d.id}`, rank: 3 });
+      if (d.serviceDue) {
+        const days = daysUntil(d.serviceDue);
+        if (days <= DUE_SOON_DAYS) out.push({ k: `s${d.id}`, tone: days < 0 ? 'red' : 'amber', icon: 'wrench', title: `${name} service ${dueText(days).toLowerCase()}`, sub: 'Open the service record', to: `/vehicles/${d.id}`, rank: days < 0 ? 1 : 4 });
+      }
+      if (!d.mainDriver && d.role === 'owner') out.push({ k: `d${d.id}`, tone: '', icon: 'user', title: `${name} has no driver`, sub: 'Assign a main driver', to: `/vehicles/${d.id}`, rank: 5 });
+    }
+    for (const dr of drivers) {
+      if (!dr.licenceExpiry) continue;
+      const days = Math.round((Date.parse(`${dr.licenceExpiry}T00:00:00Z`) - Date.now()) / DAY);
+      if (days <= 30) out.push({ k: `l${dr.id}`, tone: days < 0 ? 'red' : 'amber', icon: 'card', title: `${dr.name}'s licence ${days < 0 ? 'has expired' : `expires in ${days} days`}`, sub: 'Update the licence date', to: '/drivers', rank: days < 0 ? 1 : 4 });
+    }
+    return out.sort((a, b) => a.rank - b.rank);
+  }, [rows, drivers]);
+
+  const shownRows = rows.filter((r) => filter === 'all' || r.g === filter);
+  const markers = fleetMarkers(shownRows, hover);
+  const first = (user?.name || '').split(' ')[0];
 
   return (
     <div className="page">
-      <PageHead title="Dashboard" sub="Your fleet right now">
-        <Button icon="trips" onClick={() => nav('/replay')}>Replay</Button>
-        <Button variant="primary" icon="carPlus" onClick={() => setAdding(true)}>Add vehicle</Button>
-      </PageHead>
+      <div className="page-head greet">
+        <div>
+          <h1>{greeting()}{first ? `, ${first}` : ''}</h1>
+          <div className="sub">{total === 0 ? 'Add your first vehicle to get started.' : counts.moving ? `${counts.moving} of ${total} vehicles are moving right now.` : `${total} ${total === 1 ? 'vehicle' : 'vehicles'}, none moving right now.`}</div>
+        </div>
+        <div className="actions quick">
+          <Button size="sm" icon="map" onClick={() => nav('/map')}>Live map</Button>
+          <Button size="sm" icon="replay" onClick={() => nav('/replay')}>Replay today</Button>
+          <Button size="sm" icon="users" onClick={() => nav('/drivers?add=1')}>Add driver</Button>
+          <Button variant="primary" size="sm" icon="carPlus" onClick={() => setAdding(true)}>Add vehicle</Button>
+        </div>
+      </div>
 
       <div className="stack lg">
         <div className="grid c4">
-          <Kpi icon="car" tone="grey" label="Vehicles" value={total} foot={`${online} online, ${counts.offline} offline`} onClick={() => nav('/vehicles')} />
-          <Kpi icon="play" tone="green" label="Moving now" value={counts.moving} foot={`${counts.stopped} stopped, ${counts.nogps} without GPS`} onClick={() => nav('/map')} />
-          <Kpi icon="trips" label="Distance today" value={km(kmToday)} unit="km" foot={`${km(weekTotal)} km in the last 7 days`} />
-          <Kpi icon="bell" tone="amber" label="Alerts, last 24 h" value={alertsToday} foot={unread ? `${unread} new since you last looked` : 'Nothing new'} onClick={() => nav('/alerts')} />
+          <Kpi icon="car" tone="grey" label="Vehicles" value={total} to="/vehicles" foot={`${total - counts.offline} online, ${counts.offline} offline`} />
+          <Kpi icon="play" tone="green" label="Moving now" value={counts.moving} to="/vehicles?status=moving" foot={`${counts.stopped} stopped, ${counts.nogps} without GPS`} />
+          <Kpi icon="trips" label="Distance today" value={km(kmToday)} unit="km" to="/replay"
+            extra={<Sparkline values={perDay} />}
+            foot={<span className="row" style={{ gap: 6 }}>{deltaPct != null && <span className={`delta ${deltaPct >= 0 ? 'up' : 'down'}`}>{deltaPct >= 0 ? '+' : ''}{deltaPct}%</span>}{deltaPct != null ? 'vs yesterday' : `${km(weekTotal)} km in 7 days`}</span>} />
+          <Kpi icon="bell" tone="amber" label="Alerts, last 24 h" value={alertsToday} to="/alerts" foot={unread ? <span className="row" style={{ gap: 6 }}><span className="delta down">{unread} new</span>since you last looked</span> : 'Nothing new'} />
         </div>
 
         <div className="grid main-side">
           <Card pad={false}>
             <div className="card-head" style={{ padding: '18px 20px 14px', marginBottom: 0 }}>
               <h2>Live map</h2>
-              <Button size="sm" variant="ghost" icon="expand" onClick={() => nav('/map')}>Open</Button>
+              <Button size="sm" variant="ghost" icon="expand" onClick={() => nav('/map')}>Open full map</Button>
             </div>
-            <MapView height={400} markers={markers} fitTo={markers} fitKey={markers.length} onMarkerClick={(id) => nav(`/vehicles/${id}`)} expandable style={{ borderRadius: 0, border: 0, borderTop: '1px solid var(--border)' }} />
+            <MapView
+              height={470} expandable
+              markers={markers}
+              fitTo={shownRows.filter((r) => r.s?.lat != null).map((r) => ({ lat: r.s.lat, lon: r.s.lon }))}
+              fitKey={`${filter}-${markers.length}`}
+              onMarkerClick={(id) => nav(`/vehicles/${id}`)}
+              overlay={total > 0 && (
+                <>
+                  <Chip size="sm" on={filter === 'all'} onClick={() => setFilter('all')}>All {total}</Chip>
+                  {GROUPS.filter((g) => counts[g] > 0).map((g) => <Chip key={g} size="sm" on={filter === g} ring={filter === g ? undefined : STATUS_RING[g]} onClick={() => setFilter(filter === g ? 'all' : g)}>{counts[g]} {STATUS_LABEL[g]}</Chip>)}
+                </>
+              )}
+              style={{ borderRadius: 0, border: 0, borderTop: '1px solid var(--border)' }}
+            />
           </Card>
 
-          <div className="stack">
-            <Card title="Fleet status">
-              {total === 0 ? <Empty icon="car" title="No vehicles yet" /> : (
-                <div className="stack">
-                  <div className="stackbar" role="img" aria-label="Vehicles by status">
-                    {GROUPS.map((g) => counts[g] > 0 && <span key={g} style={{ flex: counts[g], background: STATUS_RING[g] }} />)}
-                  </div>
-                  <div className="stack sm">
-                    {GROUPS.map((g) => (
-                      <div key={g} className="row between">
-                        <span className={`status ${g}`} style={{ color: 'var(--ink)' }}><span className={`dot ${g}`} />{STATUS_LABEL[g]}</span>
-                        <b>{counts[g]}</b>
-                      </div>
-                    ))}
-                  </div>
+          <Card pad={false} title="Live fleet" action={<Button size="sm" variant="ghost" onClick={() => nav('/vehicles')}>All vehicles</Button>}>
+            <div className="live-list" style={{ padding: '0 8px 10px' }} onMouseLeave={() => setHover(null)}>
+              {isLoading ? <div className="stack" style={{ padding: 8 }}><Skeleton h={60} /><Skeleton h={60} /></div> : shownRows.length === 0 ? (
+                <Empty icon="car" title={total ? 'No vehicle in this status' : 'No vehicles yet'} action={!total && <Button variant="primary" icon="carPlus" onClick={() => setAdding(true)}>Add vehicle</Button>} />
+              ) : shownRows.map(({ d, s }) => (
+                <div key={d.id} onMouseEnter={() => setHover(d.id)}>
+                  <VehicleRow device={d} state={s} selected={hover === d.id} onClick={() => nav(`/vehicles/${d.id}`)} />
                 </div>
-              )}
-            </Card>
-            <Card title="Service due" action={service.length > 0 && <span className="pill warn">{service.length}</span>}>
-              {service.length === 0 ? (
-                <div className="muted small">No service is due in the next {DUE_SOON_DAYS} days.</div>
-              ) : (
-                <div>
-                  {service.slice(0, 4).map(({ d, days }) => (
-                    <div key={d.id} className="item click" onClick={() => nav(`/vehicles/${d.id}`)}>
-                      <VehicleThumb device={d} size="sm" />
-                      <div className="body"><div className="t plate">{plateOrName(d)}</div><div className="d" style={{ color: days < 0 ? 'var(--danger)' : undefined }}>{dueText(days)}</div></div>
-                      <Icon name="chevR" size={16} />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
-          </div>
+              ))}
+            </div>
+          </Card>
         </div>
 
         <div className="grid c2">
-          <Card title="Distance, last 7 days" action={<span className="muted small">{km(weekTotal)} km total</span>}>
-            {reports.some((q) => q.isLoading) && weekTotal === 0 ? <Skeleton h={160} /> : (
+          <Card title="Distance, last 7 days" action={<span className="muted small">Click a day to replay it</span>}>
+            {reports.some((q) => q.isLoading) && weekTotal === 0 ? <Skeleton h={220} /> : (
               <BarChart
-                height={250}
+                height={230}
+                activeIndex={6}
+                onPick={(i) => nav(`/replay?date=${week[i]}`)}
                 items={week.map((day, i) => ({
                   label: new Date(`${day}T12:00:00`).toLocaleDateString('en-IN', { weekday: 'short' }),
                   sub: String(new Date(`${day}T12:00:00`).getDate()),
                   value: perDay[i],
                   text: perDay[i] ? String(Math.round(perDay[i])) : '',
                 }))}
-                activeIndex={6}
               />
             )}
           </Card>
 
-          <Card title="Recent alerts" action={<Button size="sm" variant="ghost" onClick={() => nav('/alerts')}>View all</Button>}>
-            {alerts.length === 0 ? <div className="muted small">All quiet. No alerts in the last 7 days.</div> : (
+          <Card title="Needs attention" action={attention.length > 0 && <span className="pill warn">{attention.length}</span>}>
+            {attention.length === 0 ? (
+              <div className="row" style={{ gap: 12, padding: '10px 0' }}><span className="ico" style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--success-soft)', color: 'var(--success)', display: 'grid', placeItems: 'center' }}><Icon name="check" size={20} stroke={2.4} /></span><div><div className="bold">Everything looks fine</div><div className="small muted">No offline vehicles, overdue services or expiring licences.</div></div></div>
+            ) : (
               <div>
-                {alerts.map((e) => {
-                  const severe = SEVERE_ALERTS_SET.has(e.type);
-                  return (
-                    <div key={e.id} className="item click" onClick={() => nav(`/vehicles/${e.deviceId}/alerts`)}>
-                      <span className={`ico ${severe ? 'red' : ''}`}><Icon name={ALERT_ICONS[e.type] || 'bell'} size={16} /></span>
-                      <div className="body"><div className="t">{alertText(e)}</div><div className="d">{e.deviceName} - {dayLabel(e.time)}, {timeAgo(e.time)}</div></div>
-                    </div>
-                  );
-                })}
+                {attention.slice(0, 6).map((a) => (
+                  <div key={a.k} className="item click" onClick={() => nav(a.to)}>
+                    <span className={`ico ${a.tone}`}><Icon name={a.icon} size={16} /></span>
+                    <div className="body"><div className="t">{a.title}</div><div className="d">{a.sub}</div></div>
+                    <Icon name="chevR" size={16} color="var(--muted)" />
+                  </div>
+                ))}
+                {attention.length > 6 && <div className="small muted center" style={{ paddingTop: 10 }}>and {attention.length - 6} more</div>}
               </div>
             )}
           </Card>
         </div>
 
-        <Card title="Fleet" pad={false} action={<Button size="sm" variant="ghost" onClick={() => nav('/vehicles')}>All vehicles</Button>}>
-          {isLoading ? <div className="stack" style={{ padding: 16 }}><Skeleton h={58} /><Skeleton h={58} /></div> : devices.length === 0 ? (
-            <Empty icon="car" title="Add your first vehicle" action={<Button variant="primary" icon="carPlus" onClick={() => setAdding(true)}>Add vehicle</Button>} />
-          ) : (
-            <div style={{ padding: '4px 8px 10px' }}>
-              {rows.slice().sort((a, b) => (a.g === 'moving' ? 0 : 1) - (b.g === 'moving' ? 0 : 1)).slice(0, 6).map(({ d, s }) => (
-                <VehicleRow key={d.id} device={d} state={s} onClick={() => nav(`/vehicles/${d.id}`)} />
-              ))}
-            </div>
-          )}
-        </Card>
+        <div className="grid c2">
+          <Card title="Recent alerts" action={<Button size="sm" variant="ghost" onClick={() => nav('/alerts')}>View all</Button>}>
+            {alerts.length === 0 ? <div className="muted small">All quiet. No alerts in the last 7 days.</div> : (
+              <div>
+                {alerts.map((e) => (
+                  <div key={e.id} className="item click" onClick={() => nav(`/vehicles/${e.deviceId}/alerts`)}>
+                    <span className={`ico ${SEVERE_ALERTS.has(e.type) ? 'red' : ''}`}><Icon name={ALERT_ICONS[e.type] || 'bell'} size={16} /></span>
+                    <div className="body"><div className="t">{alertText(e)}</div><div className="d">{e.deviceName}, {dayLabel(e.time)} {new Date(e.time).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</div></div>
+                    <Icon name="chevR" size={16} color="var(--muted)" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card title="Fleet status">
+            {total === 0 ? <Empty icon="car" title="No vehicles yet" /> : (
+              <div className="stack">
+                <div className="stackbar" role="img" aria-label="Vehicles by status">
+                  {GROUPS.map((g) => counts[g] > 0 && <span key={g} title={`${STATUS_LABEL[g]}: ${counts[g]}`} style={{ flex: counts[g], background: STATUS_RING[g], cursor: 'pointer' }} onClick={() => nav(`/vehicles?status=${g}`)} />)}
+                </div>
+                <div>
+                  {GROUPS.map((g) => (
+                    <div key={g} className="item click" style={{ padding: '10px 0' }} onClick={() => nav(`/vehicles?status=${g}`)}>
+                      <span className={`dot ${g}`} />
+                      <div className="body"><div className="t" style={{ fontWeight: 500 }}>{STATUS_LABEL[g]}</div></div>
+                      <b>{counts[g]}</b>
+                      <Icon name="chevR" size={16} color="var(--muted)" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Card>
+        </div>
       </div>
       {adding && <VehicleForm onClose={() => setAdding(false)} />}
     </div>
