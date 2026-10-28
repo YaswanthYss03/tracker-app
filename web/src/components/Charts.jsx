@@ -1,5 +1,6 @@
 // Charts drawn with plain SVG / divs: speedometer, speed line chart, bar chart, totals row.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { buildAxis, compactSpan } from '../lib/speedAxis';
 
 /** Speedometer dial (0-100 km/h scale). `value` null = not playing: needle rests at 0. */
 export function Speedometer({ value, size = 150, caption }) {
@@ -63,37 +64,40 @@ function useWidth() {
 
 /**
  * Speed (km/h) over time as a line chart. `points` = one line ([ms, speed]);
- * `series` = several coloured lines. `cursor` 0..1 draws a marker.
+ * `series` = several coloured lines. `cursor` 0..1 draws a marker. Hover shows the speed and time,
+ * click calls onSeek(0..1). Long stops are squeezed into narrow shaded bands so the driving is readable.
  */
 export function SpeedChart({ points, series, height = 160, cursor, onSeek }) {
   const [ref, w] = useWidth();
   const [hover, setHover] = useState(null);
   const lines = series || [{ points: points || [], color: 'var(--accent)' }];
   const all = lines.flatMap((l) => l.points);
-  const pad = { l: 34, r: 8, t: 10, b: 22 };
+  const pad = { l: 34, r: 8, t: 10, b: 24 };
   const max = Math.max(60, Math.ceil(Math.max(...all.map((p) => p[1]), 0) / 20) * 20);
   const t0 = all.length ? Math.min(...all.map((p) => p[0])) : 0;
   const t1 = all.length ? Math.max(...all.map((p) => p[0])) : 1;
-  const x = (t) => pad.l + ((t - t0) / Math.max(1, t1 - t0)) * (w - pad.l - pad.r);
+  const plotW = Math.max(1, w - pad.l - pad.r);
+  const axis = useMemo(() => buildAxis(all, t0, t1, plotW), [all.length, t0, t1, plotW]); // eslint-disable-line react-hooks/exhaustive-deps
+  const x = (t) => pad.l + axis.xOf(t);
   const y = (v) => pad.t + (1 - v / max) * (height - pad.t - pad.b);
-  const path = (pts) => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join(' ');
   const ticks = [0, max / 2, max];
   const clock = (t) => new Date(t).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
-  const cx = cursor != null ? pad.l + cursor * (w - pad.l - pad.r) : null;
+  const cx = cursor != null ? x(t0 + cursor * (t1 - t0)) : null;
   const single = lines.length === 1;
-  // Nearest point of the first line to the mouse, for the readout.
+  const last = axis.spans.length - 1;
+  let lastLabel = pad.l; // the start time is already drawn at the left edge
+  // Nearest point of the first line to the mouse (the x position is mapped back to a time).
   const nearest = (clientX) => {
     const rect = ref.current.getBoundingClientRect();
-    const frac = Math.max(0, Math.min(1, (clientX - rect.left - pad.l) / Math.max(1, w - pad.l - pad.r)));
-    const t = t0 + frac * (t1 - t0);
+    const t = axis.tOf(Math.max(0, Math.min(plotW, clientX - rect.left - pad.l)));
     let best = lines[0].points[0];
     for (const p of lines[0].points) if (Math.abs(p[0] - t) < Math.abs(best[0] - t)) best = p;
-    return { frac, p: best };
+    return { t, p: best };
   };
   return (
     <div ref={ref} className="chart-wrap" style={{ width: '100%', height, cursor: onSeek ? 'pointer' : 'crosshair' }}
       onMouseMove={(e) => all.length > 1 && setHover(nearest(e.clientX))} onMouseLeave={() => setHover(null)}
-      onClick={(e) => onSeek && all.length > 1 && onSeek(nearest(e.clientX).frac)}>
+      onClick={(e) => onSeek && all.length > 1 && onSeek(Math.max(0, Math.min(1, (nearest(e.clientX).t - t0) / Math.max(1, t1 - t0))))}>
       {hover && single && <div className="chart-tip" style={{ left: x(hover.p[0]), top: y(hover.p[1]) - 8 }}>{hover.p[1]} km/h, {clock(hover.p[0])}</div>}
       {w > 0 && all.length > 1 && (
         <svg width={w} height={height} role="img" aria-label={`Speed chart, top ${Math.max(0, ...all.map((p) => p[1]))} km/h`}>
@@ -109,14 +113,44 @@ export function SpeedChart({ points, series, height = 160, cursor, onSeek }) {
               <text x={pad.l - 8} y={y(v) + 4} fontSize="11" fill="var(--muted)" textAnchor="end">{Math.round(v)}</text>
             </g>
           ))}
-          {single && lines[0].points.length > 1 && (
-            <path d={`${path(lines[0].points)} L${x(lines[0].points[lines[0].points.length - 1][0]).toFixed(1)},${y(0)} L${x(lines[0].points[0][0]).toFixed(1)},${y(0)} Z`} fill="url(#spdfill)" />
-          )}
-          {lines.map((l, i) => l.points.length > 1 && (
-            <path key={i} d={path(l.points)} stroke={l.color} strokeWidth={single ? 2 : 1.8} fill="none" strokeLinejoin="round" strokeLinecap="round" />
-          ))}
-          <text x={pad.l} y={height - 4} fontSize="11" fill="var(--muted)">{clock(t0)}</text>
-          <text x={w - pad.r} y={height - 4} fontSize="11" fill="var(--muted)" textAnchor="end">{clock(t1)}</text>
+          {axis.spans.map((s, si) => {
+            const sx0 = pad.l + s.x0;
+            const sx1 = pad.l + s.x1;
+            if (s.stop) {
+              const mid = (sx0 + sx1) / 2;
+              const my = (pad.t + y(0)) / 2;
+              return (
+                <g key={si}>
+                  <rect x={sx0} y={pad.t} width={sx1 - sx0} height={y(0) - pad.t} fill="var(--surface-2)" opacity="0.6" />
+                  <line x1={sx0} x2={sx1} y1={y(0)} y2={y(0)} stroke="var(--muted)" strokeWidth="1.5" strokeDasharray="3 3" />
+                  <text x={mid} y={my} fontSize="10" fontWeight="700" fill="var(--muted)" textAnchor="middle" transform={`rotate(-90 ${mid} ${my})`}>{`Stopped ${compactSpan(s.t1 - s.t0)}`}</text>
+                </g>
+              );
+            }
+            const showLabel = si > 0 && sx1 - sx0 >= 34 && sx0 - lastLabel >= 56 && w - pad.r - sx0 >= 56;
+            if (showLabel) lastLabel = sx0;
+            return (
+              <g key={si}>
+                {showLabel && <text x={sx0} y={height - 5} fontSize="11" fill="var(--muted)">{clock(s.t0)}</text>}
+                {lines.map((l, li) => {
+                  const inside = l.points.filter((p) => p[0] >= s.t0 && p[0] <= s.t1);
+                  if (inside.length < 2) return null;
+                  const coords = inside.map((p) => [x(p[0]), y(p[1])]);
+                  if (si > 0) coords.unshift([sx0, y(0)]);
+                  if (si < last) coords.push([sx1, y(0)]);
+                  const d = coords.map((q, k) => `${k ? 'L' : 'M'}${q[0].toFixed(1)},${q[1].toFixed(1)}`).join(' ');
+                  return (
+                    <g key={li}>
+                      {single && <path d={`${d} L${coords[coords.length - 1][0].toFixed(1)},${y(0)} L${coords[0][0].toFixed(1)},${y(0)} Z`} fill="url(#spdfill)" />}
+                      <path d={d} stroke={l.color} strokeWidth={single ? 2 : 1.8} fill="none" strokeLinejoin="round" strokeLinecap="round" />
+                    </g>
+                  );
+                })}
+              </g>
+            );
+          })}
+          <text x={pad.l} y={height - 5} fontSize="11" fill="var(--muted)">{clock(t0)}</text>
+          <text x={w - pad.r} y={height - 5} fontSize="11" fill="var(--muted)" textAnchor="end">{clock(t1)}</text>
           {cx != null && <line x1={cx} x2={cx} y1={pad.t} y2={y(0)} stroke="var(--ink)" strokeWidth="1" />}
           {hover && <><line x1={x(hover.p[0])} x2={x(hover.p[0])} y1={pad.t} y2={y(0)} stroke="var(--faint)" strokeDasharray="3 3" /><circle cx={x(hover.p[0])} cy={y(hover.p[1])} r="4.5" fill="var(--accent)" stroke="var(--bg)" strokeWidth="2" /></>}
         </svg>

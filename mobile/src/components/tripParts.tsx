@@ -4,9 +4,10 @@
  *   <SpeedChart>  speed over time as a soft area chart
  *   <SpeedGauge>  speedometer dial with a needle
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
-import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Defs, G, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import { buildAxis, compactSpan } from '@/lib/speedAxis';
 import { DIcon } from '@/components/DesignIcon';
 import { shadow, space, type, useColors } from '@/theme';
 
@@ -70,6 +71,8 @@ export function Scrubber({ value, onChange, playing, onPlay, label, disabled }: 
 /**
  * Speed (km/h) over time as a line chart. `points` = one line ([ms, speed]);
  * `series` = several coloured lines (Compare). `cursor` 0..1 draws a marker.
+ * Long stops are squeezed into narrow shaded bands (with their length), so the
+ * driving parts get the room and the curve is easy to read.
  */
 export function SpeedChart({ points, series, height = 120, cursor }: {
   points?: [number, number][]; series?: { points: [number, number][]; color: string }[]; height?: number; cursor?: number | null;
@@ -78,17 +81,21 @@ export function SpeedChart({ points, series, height = 120, cursor }: {
   const [w, setW] = useState(0);
   const lines = series ?? [{ points: points ?? [], color: c.accent }];
   const all = lines.flatMap((l) => l.points);
-  const pad = { l: 28, r: 6, t: 8, b: 14 };
+  const pad = { l: 28, r: 6, t: 8, b: 20 };
   const max = Math.max(60, Math.ceil(Math.max(...all.map((p) => p[1]), 0) / 20) * 20);
   const t0 = all.length ? Math.min(...all.map((p) => p[0])) : 0;
   const t1 = all.length ? Math.max(...all.map((p) => p[0])) : 1;
-  const x = (t: number) => pad.l + ((t - t0) / Math.max(1, t1 - t0)) * (w - pad.l - pad.r);
+  const plotW = Math.max(1, w - pad.l - pad.r);
+  const axis = useMemo(() => buildAxis(all, t0, t1, plotW), [all.length, t0, t1, plotW]); // eslint-disable-line react-hooks/exhaustive-deps
+  const x = (t: number) => pad.l + axis.xOf(t);
   const y = (v: number) => pad.t + (1 - v / max) * (height - pad.t - pad.b);
-  const path = (pts: [number, number][]) => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join(' ');
   const ticks = [0, max / 2, max];
-  const cx = cursor != null ? pad.l + cursor * (w - pad.l - pad.r) : null;
+  const cx = cursor != null ? x(t0 + cursor * (t1 - t0)) : null;
   const single = lines.length === 1;
   const top = Math.max(0, ...all.map((p) => p[1]));
+  const clock = (t: number) => new Date(t).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+  const last = axis.spans.length - 1;
+  let lastLabel = pad.l; // the start time is already drawn at the left edge
   return (
     <View onLayout={(e) => setW(e.nativeEvent.layout.width)} style={{ height }} accessibilityLabel={`Speed chart, top ${top} km/h`}>
       {w > 0 && all.length > 1 && (
@@ -105,12 +112,43 @@ export function SpeedChart({ points, series, height = 120, cursor }: {
           {ticks.map((v) => (
             <SvgText key={`l${v}`} x={pad.l - 6} y={y(v) + 4} fontSize={10} fill={c.textMuted} textAnchor="end">{Math.round(v)}</SvgText>
           ))}
-          {single && lines[0].points.length > 1 && (
-            <Path d={`${path(lines[0].points)} L${x(lines[0].points[lines[0].points.length - 1][0]).toFixed(1)},${y(0)} L${x(lines[0].points[0][0]).toFixed(1)},${y(0)} Z`} fill="url(#spd)" />
-          )}
-          {lines.map((l, i) => l.points.length > 1 && (
-            <Path key={i} d={path(l.points)} stroke={l.color} strokeWidth={single ? 2 : 1.8} fill="none" strokeLinejoin="round" strokeLinecap="round" />
-          ))}
+          {axis.spans.map((s, si) => {
+            const sx0 = pad.l + s.x0;
+            const sx1 = pad.l + s.x1;
+            if (s.stop) {
+              const mid = (sx0 + sx1) / 2;
+              return (
+                <G key={si}>
+                  <Rect x={sx0} y={pad.t} width={sx1 - sx0} height={y(0) - pad.t} fill={c.surface2} opacity={0.6} />
+                  <Line x1={sx0} x2={sx1} y1={y(0)} y2={y(0)} stroke={c.textMuted} strokeWidth={1.5} strokeDasharray="3 3" />
+                  <SvgText x={mid} y={(pad.t + y(0)) / 2} fontSize={9} fontWeight="700" fill={c.textMuted} textAnchor="middle" transform={`rotate(-90 ${mid} ${(pad.t + y(0)) / 2})`}>{`Stopped ${compactSpan(s.t1 - s.t0)}`}</SvgText>
+                </G>
+              );
+            }
+            const showLabel = si > 0 && sx1 - sx0 >= 30 && sx0 - lastLabel >= 50 && w - pad.r - sx0 >= 50;
+            if (showLabel) lastLabel = sx0;
+            return (
+              <G key={si}>
+                {showLabel && <SvgText x={sx0} y={height - 4} fontSize={10} fill={c.textMuted} textAnchor="start">{clock(s.t0)}</SvgText>}
+                {lines.map((l, li) => {
+                  const inside = l.points.filter((p) => p[0] >= s.t0 && p[0] <= s.t1);
+                  if (inside.length < 2) return null;
+                  const coords = inside.map((p) => [x(p[0]), y(p[1])]);
+                  if (si > 0) coords.unshift([sx0, y(0)]); // up from the stop
+                  if (si < last) coords.push([sx1, y(0)]); // back down into the next stop
+                  const d = coords.map((q, k) => `${k ? 'L' : 'M'}${q[0].toFixed(1)},${q[1].toFixed(1)}`).join(' ');
+                  return (
+                    <G key={li}>
+                      {single && <Path d={`${d} L${coords[coords.length - 1][0].toFixed(1)},${y(0)} L${coords[0][0].toFixed(1)},${y(0)} Z`} fill="url(#spd)" />}
+                      <Path d={d} stroke={l.color} strokeWidth={single ? 2 : 1.8} fill="none" strokeLinejoin="round" strokeLinecap="round" />
+                    </G>
+                  );
+                })}
+              </G>
+            );
+          })}
+          <SvgText x={pad.l} y={height - 4} fontSize={10} fill={c.textMuted} textAnchor="start">{clock(t0)}</SvgText>
+          <SvgText x={w - pad.r} y={height - 4} fontSize={10} fill={c.textMuted} textAnchor="end">{clock(t1)}</SvgText>
           {cx != null && <Line x1={cx} x2={cx} y1={pad.t} y2={y(0)} stroke={c.text} strokeWidth={1} />}
         </Svg>
       )}
