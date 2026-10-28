@@ -14,7 +14,7 @@ const PHOTO = new Set(['car', 'van', 'truck', 'tractor']);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
 function art(type) {
-  if (PHOTO.has(type)) return `<img alt="" src="/vehicles/${type}.png">`;
+  if (PHOTO.has(type)) return `<img alt="" src="/art/${type}.png">`;
   return VEHICLE_SVG[type] || VEHICLE_SVG.other;
 }
 

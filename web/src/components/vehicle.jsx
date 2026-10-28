@@ -9,7 +9,7 @@ const PHOTO_TYPES = new Set(['car', 'van', 'truck', 'tractor']);
 
 export function VehicleImage({ type, dimmed, className }) {
   const style = dimmed ? { opacity: 0.45, filter: 'grayscale(0.6)' } : undefined;
-  if (PHOTO_TYPES.has(type)) return <img src={`/vehicles/${type}.png`} alt="" className={className} style={style} />;
+  if (PHOTO_TYPES.has(type)) return <img src={`/art/${type}.png`} alt="" className={className} style={style} />;
   const svg = VEHICLE_SVG[type] || VEHICLE_SVG.other;
   return <span className={className} style={{ display: 'contents', ...style }} dangerouslySetInnerHTML={{ __html: svg }} />;
 }
