@@ -58,11 +58,11 @@ export function DatePickerSheet({ visible, value, max, onPick, onClose }: { visi
     <DesignSheet visible={visible} onClose={onClose} title="Choose date">
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Pressable onPress={() => step(-1)} accessibilityRole="button" accessibilityLabel="Previous month" style={styles.nav}><DIcon name="chevL" size={18} strokeWidth={2.2} /></Pressable>
-        <Text style={{ fontFamily: fonts.bold, fontSize: 16, color: c.text }}>{first.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</Text>
+        <Text style={{ fontFamily: fonts.bold, fontSize: 15, color: c.text }}>{first.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</Text>
         <Pressable onPress={() => !atMax && step(1)} accessibilityRole="button" accessibilityLabel="Next month" style={[styles.nav, { opacity: atMax ? 0.3 : 1 }]}><DIcon name="chevR" size={18} strokeWidth={2.2} /></Pressable>
       </View>
       <View style={{ flexDirection: 'row' }}>
-        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => <Text key={i} style={{ width: `${100 / 7}%`, textAlign: 'center', fontFamily: fonts.bold, fontSize: 12, color: c.textMuted }}>{d}</Text>)}
+        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => <Text key={i} style={{ width: `${100 / 7}%`, textAlign: 'center', fontFamily: fonts.bold, fontSize: 11, color: c.textMuted }}>{d}</Text>)}
       </View>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
         {cells.map((d, i) => {
@@ -73,7 +73,7 @@ export function DatePickerSheet({ visible, value, max, onPick, onClose }: { visi
           return (
             <Pressable key={iso} disabled={future} onPress={() => onPick(iso)} accessibilityRole="button" accessibilityState={{ selected: on, disabled: future }} accessibilityLabel={dmy(iso)} style={styles.cell}>
               <View style={[styles.day, on && { backgroundColor: c.accent }, !on && iso === max && { borderWidth: 1.5, borderColor: c.accent }]}>
-                <Text style={{ fontFamily: on ? fonts.bold : fonts.medium, fontSize: 15, color: on ? '#FFFFFF' : future ? c.border : c.text }}>{d}</Text>
+                <Text style={{ fontFamily: on ? fonts.bold : fonts.medium, fontSize: 13, color: on ? '#FFFFFF' : future ? c.border : c.text }}>{d}</Text>
               </View>
             </Pressable>
           );
@@ -83,7 +83,7 @@ export function DatePickerSheet({ visible, value, max, onPick, onClose }: { visi
   );
 }
 
-const ITEM = 44;
+const ITEM = 34;
 /** Hour and minute wheels. */
 export function TimePickerSheet({ visible, title, value, onPick, onClose }: { visible: boolean; title: string; value: string; onPick: (hhmm: string) => void; onClose: () => void }) {
   const c = useHomeColors();
@@ -94,11 +94,11 @@ export function TimePickerSheet({ visible, title, value, onPick, onClose }: { vi
     <DesignSheet visible={visible} onClose={onClose} title={title}>
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16 }}>
         <Wheel count={24} value={h} onChange={setH} />
-        <Text style={{ alignSelf: 'center', fontFamily: fonts.bold, fontSize: 22, color: c.text }}>:</Text>
+        <Text style={{ alignSelf: 'center', fontFamily: fonts.bold, fontSize: 18, color: c.text }}>:</Text>
         <Wheel count={60} value={m} onChange={setM} />
       </View>
-      <Pressable onPress={() => onPick(`${pad(h)}:${pad(m)}`)} accessibilityRole="button" style={{ height: 50, borderRadius: 25, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontFamily: fonts.bold, fontSize: 16, color: '#FFFFFF' }}>Set {pad(h)}:{pad(m)}</Text>
+      <Pressable onPress={() => onPick(`${pad(h)}:${pad(m)}`)} accessibilityRole="button" style={{ height: 42, borderRadius: 21, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontFamily: fonts.bold, fontSize: 14, color: '#FFFFFF' }}>Set {pad(h)}:{pad(m)}</Text>
       </Pressable>
     </DesignSheet>
   );
@@ -110,7 +110,7 @@ function Wheel({ count, value, onChange }: { count: number; value: number; onCha
   return (
     <ScrollView
       ref={ref}
-      style={{ height: ITEM * 5, width: 84 }}
+      style={{ height: ITEM * 5, width: 68 }}
       showsVerticalScrollIndicator={false}
       onLayout={() => ref.current?.scrollTo({ y: value * ITEM, animated: false })}
       snapToInterval={ITEM}
@@ -121,8 +121,8 @@ function Wheel({ count, value, onChange }: { count: number; value: number; onCha
       {Array.from({ length: count }, (_, i) => {
         const on = i === value;
         return (
-          <Pressable key={i} onPress={() => { onChange(i); ref.current?.scrollTo({ y: i * ITEM, animated: true }); }} style={{ height: ITEM, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: on ? '#FBE4E4' : 'transparent' }}>
-            <Text style={{ fontFamily: on ? fonts.bold : fonts.medium, fontSize: on ? 22 : 18, color: on ? c.accent : c.textMuted }}>{pad(i)}</Text>
+          <Pressable key={i} onPress={() => { onChange(i); ref.current?.scrollTo({ y: i * ITEM, animated: true }); }} style={{ height: ITEM, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: on ? '#FBE4E4' : 'transparent' }}>
+            <Text style={{ fontFamily: on ? fonts.bold : fonts.medium, fontSize: on ? 19 : 15, color: on ? c.accent : c.textMuted }}>{pad(i)}</Text>
           </Pressable>
         );
       })}
@@ -132,7 +132,7 @@ function Wheel({ count, value, onChange }: { count: number; value: number; onCha
 
 const styles = StyleSheet.create({
   field: { height: 52, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14 },
-  nav: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  cell: { width: `${100 / 7}%`, height: 46, alignItems: 'center', justifyContent: 'center' },
-  day: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  nav: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  cell: { width: `${100 / 7}%`, height: 36, alignItems: 'center', justifyContent: 'center' },
+  day: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
 });
