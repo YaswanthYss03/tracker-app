@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth';
 import { api } from '../lib/api';
-import { ErrorBox } from '../components/ui';
+import { Button, ErrorBox, Input } from '../components/ui';
+import AuthShell from '../components/AuthShell';
 import VerifyEmail from '../components/VerifyEmail';
 import GoogleButton from '../components/GoogleButton';
 
@@ -15,6 +16,7 @@ export default function Login() {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const to = location.state?.from || '/';
 
   if (user) return <Navigate to="/" replace />;
 
@@ -23,13 +25,12 @@ export default function Login() {
     setBusy(true);
     setError(null);
     try {
-      const u = await login(email, password);
-      navigate(location.state?.from || '/', { replace: true });
+      await login(email.trim(), password);
+      navigate(to, { replace: true });
     } catch (err) {
       setBusy(false);
       if (err.code === 'EMAIL_NOT_VERIFIED') {
-        // Send a fresh code and ask for it.
-        await api('/auth/resend-verification', { method: 'POST', body: { email }, auth: false }).catch(() => {});
+        await api('/auth/resend-verification', { method: 'POST', body: { email: email.trim() }, auth: false }).catch(() => {});
         setVerifying(true);
         return;
       }
@@ -38,47 +39,26 @@ export default function Login() {
   }
 
   return (
-    <div className="auth-page">
-      <div className="card auth-card">
-        <div className="brand">
-          <img src="/favicon.svg" alt="" /> Pavakie Tracker
-        </div>
-        {verifying ? (
-          <VerifyEmail
-            email={email}
-            onVerified={(data) => {
-              const u = completeVerification(data);
-              navigate('/', { replace: true });
-            }}
-            onBack={() => setVerifying(false)}
-          />
-        ) : (
+    <AuthShell>
+      {verifying ? (
+        <VerifyEmail email={email.trim()} onVerified={(data) => { completeVerification(data); navigate('/', { replace: true }); }} onBack={() => setVerifying(false)} />
+      ) : (
         <>
-        <h1>Log in</h1>
-        <GoogleButton
-          onSignedIn={(data) => {
-            const u = completeVerification(data);
-            navigate(location.state?.from || '/', { replace: true });
-          }}
-        />
-        <form className="form" onSubmit={submit}>
-          <label className="field">
-            Email
-            <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
-          </label>
-          <label className="field">
-            Password
-            <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          </label>
-          <ErrorBox error={error} />
-          <button className="btn primary" disabled={busy}>{busy ? 'Logging in…' : 'Log in'}</button>
-        </form>
-        <p className="muted small" style={{ marginTop: 16 }}>
-          New here? <Link to="/register">Create an account</Link>
-        </p>
+          <div>
+            <h1>Welcome back</h1>
+            <p className="muted" style={{ marginTop: 4 }}>Log in to see your vehicles.</p>
+          </div>
+          <GoogleButton onSignedIn={(data) => { completeVerification(data); navigate(to, { replace: true }); }} />
+          <form className="stack" onSubmit={submit}>
+            <Input label="Email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+            <Input label="Password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <div style={{ textAlign: 'right', marginTop: -8 }}><Link to="/forgot" className="link small">Forgot password?</Link></div>
+            <ErrorBox error={error} />
+            <Button type="submit" variant="primary" size="lg" block loading={busy}>{busy ? 'Logging in...' : 'Log in'}</Button>
+          </form>
+          <p className="muted small center">New here? <Link to="/register" className="link">Create an account</Link></p>
         </>
-        )}
-      </div>
-    </div>
+      )}
+    </AuthShell>
   );
 }

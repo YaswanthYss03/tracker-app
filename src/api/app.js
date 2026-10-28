@@ -55,8 +55,8 @@ function createApp(deps) {
     helmet({
       contentSecurityPolicy: {
         directives: {
-          // Map tiles come from OpenStreetMap; live updates use a same-origin WebSocket.
-          'img-src': ["'self'", 'data:', 'blob:', 'https://*.tile.openstreetmap.org'],
+          // Map tiles come from OpenStreetMap (street) and Esri (satellite); live updates use a same-origin WebSocket.
+          'img-src': ["'self'", 'data:', 'blob:', 'https://*.tile.openstreetmap.org', 'https://server.arcgisonline.com'],
           'connect-src': ["'self'", 'https://accounts.google.com/gsi/'],
           // "Sign in with Google" button (Google Identity Services)
           'script-src': ["'self'", 'https://accounts.google.com/gsi/client'],
