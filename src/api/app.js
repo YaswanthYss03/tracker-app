@@ -23,6 +23,10 @@ const { createInquiriesRouter } = require('./routes/inquiries');
 const { createDevicesRouter } = require('./routes/devices');
 const { createAdminRouter } = require('./routes/admin');
 const { createTrackingRouter, createPublicRouter } = require('./routes/tracking');
+const { createGeocodeRouter } = require('./routes/geocode');
+const { createDriversRouter } = require('./routes/drivers');
+const { createServiceRouter } = require('./routes/service');
+const { createGeocoder } = require('../services/geocoder');
 
 const WEB_DIST = path.join(__dirname, '../../web/dist');
 const ADMIN_DIST = path.join(__dirname, '../../admin/dist');
@@ -51,8 +55,8 @@ function createApp(deps) {
     helmet({
       contentSecurityPolicy: {
         directives: {
-          // Map tiles come from OpenStreetMap; live updates use a same-origin WebSocket.
-          'img-src': ["'self'", 'data:', 'blob:', 'https://*.tile.openstreetmap.org'],
+          // Map tiles come from OpenStreetMap (street) and Esri (satellite); live updates use a same-origin WebSocket.
+          'img-src': ["'self'", 'data:', 'blob:', 'https://*.tile.openstreetmap.org', 'https://server.arcgisonline.com'],
           'connect-src': ["'self'", 'https://accounts.google.com/gsi/'],
           // "Sign in with Google" button (Google Identity Services)
           'script-src': ["'self'", 'https://accounts.google.com/gsi/client'],
@@ -88,7 +92,7 @@ function createApp(deps) {
   const auth = requireAuth(authService);
   app.use('/api', limits.api);
   app.use('/api/v1/auth', createAuthRouter({ authService, limits }));
-  app.use('/api/v1/me', auth, createMeRouter({ authService }));
+  app.use('/api/v1/me', auth, createMeRouter({ authService, notifier: deps.notifier }));
   app.use('/api/v1/inquiries', createInquiriesRouter({ authService, limits, mailer: deps.mailer, support: config.support, logger }));
   app.use('/api/v1/devices', auth, createDevicesRouter({ ownership, cache, limits }));
   app.use(
@@ -96,7 +100,14 @@ function createApp(deps) {
     auth,
     createTrackingRouter({ ownership, registry, processors: deps.processors, hooks, config, limits })
   );
+  app.use('/api/v1/devices', auth, createServiceRouter({ ownership }));
   app.use('/api/v1/public', createPublicRouter({ cache }));
+  const geocoder = deps.geocoder || createGeocoder({
+    userAgent: `PavakieTracker/1.0 (${config.support?.email || 'gps tracker'})`,
+    logger,
+  });
+  app.use('/api/v1/geocode', auth, createGeocodeRouter({ geocoder }));
+  app.use('/api/v1/drivers', auth, createDriversRouter());
   // Mobile app asks this at start: below minVersion it must update.
   app.get('/api/v1/app/config', (req, res) => {
     res.json({

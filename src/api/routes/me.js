@@ -2,7 +2,8 @@
  * /api/v1/me — the logged-in user's account.
  *
  *   GET    /                 profile
- *   PATCH  /                 { name }
+ *   PATCH  /                 { name?, phone?, company?, alerts?: { offline, longStop, gpsLost, quietHours } }
+ *   POST   /push-test        -> { sent } a test notification to my phones (503 if push is off)
  *   POST   /password         { currentPassword, newPassword } -> 204, logs out all sessions
  *   POST   /logout-all       -> 204
  *   DELETE /                 { password } (or { confirmEmail } for Google-only accounts) -> 204;
@@ -10,22 +11,44 @@
  *   POST   /push-tokens      { token, platform: android|ios|web } -> 204
  *   DELETE /push-tokens      { token } -> 204
  *   GET    /events           ?days=7&limit=200 alerts from all my trackers
+ *   GET    /trips            ?days=7&limit=300 trips of all my trackers, newest first
  */
 const express = require('express');
 const { parse, wrap, z, schemas } = require('../validate');
 const eventsRepo = require('../../db/repositories/events');
-const { eventDto } = require('../dto');
+const { eventDto, tripDto } = require('../dto');
+const { prisma } = require('../../db/client');
+const { AppError } = require('../../lib/errors');
 
-function createMeRouter({ authService }) {
+function createMeRouter({ authService, notifier }) {
   const router = express.Router();
 
   router.get('/', wrap(async (req, res) => {
     res.json({ data: authService.publicUser(await authService.getUser(req.user.id)) });
   }));
 
+  const profileSchema = z.object({
+    name: z.string().trim().min(1).max(80).optional(),
+    phone: z.string().trim().regex(/^\+?[0-9 ()-]{6,20}$/, 'enter a valid phone number').nullable().optional(),
+    company: z.string().trim().max(80).nullable().optional(),
+    alerts: z.object({
+      offline: z.boolean().optional(),
+      longStop: z.boolean().optional(),
+      gpsLost: z.boolean().optional(),
+      quietHours: z.boolean().optional(),
+    }).strict().optional(),
+  }).strict().refine((v) => Object.keys(v).length > 0, 'nothing to update');
+
   router.patch('/', wrap(async (req, res) => {
-    const { name } = parse(z.object({ name: z.string().trim().min(1).max(80) }), req.body);
-    res.json({ data: await authService.updateProfile(req.user.id, { name }) });
+    // Empty strings from forms clear phone / company.
+    const body = { ...req.body };
+    for (const k of ['phone', 'company']) if (body[k] === '') body[k] = null;
+    res.json({ data: await authService.updateProfile(req.user.id, parse(profileSchema, body)) });
+  }));
+
+  router.post('/push-test', wrap(async (req, res) => {
+    if (!notifier?.enabled) throw new AppError(503, 'PUSH_DISABLED', 'Push notifications are not set up on the server');
+    res.json({ data: await notifier.sendTest(req.user.id) });
   }));
 
   router.post('/password', wrap(async (req, res) => {
@@ -67,6 +90,36 @@ function createMeRouter({ authService }) {
     res.status(204).end();
   }));
 
+  router.get('/trips', wrap(async (req, res) => {
+    const q = parse(
+      z.object({
+        days: z.coerce.number().int().min(1).max(31).default(7),
+        limit: z.coerce.number().int().min(1).max(500).default(300),
+      }),
+      req.query
+    );
+    const rows = await prisma.trip.findMany({
+      where: { startTime: { gte: new Date(Date.now() - q.days * 86_400_000) }, device: { access: { some: { userId: req.user.id } } } },
+      include: { device: { select: { id: true, name: true, imei: true, registrationNumber: true, icon: true, mainDriver: { select: { name: true } } } } },
+      orderBy: { startTime: 'desc' },
+      take: q.limit,
+    });
+    res.json({
+      data: rows.map((t) => ({
+        ...tripDto(t),
+        deviceId: t.deviceId,
+        inProgress: !t.endTime,
+        vehicle: {
+          registrationNumber: t.device.registrationNumber,
+          name: t.device.name || `Tracker ${t.device.imei.slice(-4)}`,
+          driverName: t.device.mainDriver?.name ?? null,
+          icon: t.device.icon,
+        },
+      })),
+      count: rows.length,
+    });
+  }));
+
   router.get('/events', wrap(async (req, res) => {
     const q = parse(
       z.object({
@@ -77,7 +130,7 @@ function createMeRouter({ authService }) {
     );
     const rows = await eventsRepo.listForUser(req.user.id, { from: new Date(Date.now() - q.days * 86_400_000), limit: q.limit });
     res.json({
-      data: rows.map((e) => ({ ...eventDto(e), deviceName: e.device.name || `Tracker ${e.device.imei.slice(-4)}` })),
+      data: rows.map((e) => ({ ...eventDto(e), deviceName: e.device.registrationNumber || e.device.name || `Tracker ${e.device.imei.slice(-4)}` })),
       count: rows.length,
     });
   }));

@@ -1,131 +1,112 @@
-// History: pick a day, see the route, replay it.
+// Replay a day: the same design as the Replay tab for one vehicle — date and
+// time pickers, the route on the map with a moving dot, playback bar, the
+// speedometer with totals, and the speed line chart.
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { Ionicons } from '@expo/vector-icons';
 import { api } from '@/api/client';
 import type { RoutePoint } from '@/api/types';
-import { isoDay, timeOnly } from '@/lib/format';
-import { brand } from '@/theme/colors';
+import { duration, isoDay, km } from '@/lib/format';
+import { ROUTE_RED, endDots, hhmm, pointAt, routeStats, validTime } from '@/lib/replay';
 import { AppMap } from '@/components/Map';
-import { AppText, Card, EmptyState, IconButton, Loading, Row } from '@/components/ui';
-import { radius, space, useColors } from '@/theme';
+import { ExpandableMap } from '@/components/ExpandableMap';
+import { ReplayFields } from '@/components/ReplayFields';
+import { ReplayTotals, Scrubber, SpeedChart, usePlayback } from '@/components/tripParts';
+import { fonts } from '@/theme';
+import { useResponsive } from '@/lib/responsive';
+import { useHomeColors as useColors } from '@/theme/designHome';
 import type { TabProps } from './types';
-
-const DAY = 86_400_000;
-
-function dayLabel(day: string) {
-  const today = isoDay();
-  if (day === today) return 'Today';
-  if (day === isoDay(Date.now() - DAY)) return 'Yesterday';
-  return new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-}
 
 export function HistoryTab({ device }: TabProps) {
   const c = useColors();
-  const [day, setDay] = useState(isoDay());
-  const [index, setIndex] = useState<number | null>(null);
+  const r = useResponsive();
+  const today = isoDay();
+  const [date, setDate] = useState(today);
+  const [fromText, setFrom] = useState('00:00');
+  const [toText, setTo] = useState(hhmm());
   const [playing, setPlaying] = useState(false);
-  const [barWidth, setBarWidth] = useState(1);
+  const [progress, setProgress] = usePlayback(playing, setPlaying);
 
-  const from = new Date(`${day}T00:00:00`);
+  const from = validTime(fromText) ? fromText : '00:00';
+  const to = validTime(toText) ? toText : date === today ? hhmm() : '23:59';
+  const winStart = new Date(`${date}T${from}:00`).getTime();
+  const winEnd = new Date(`${date}T${to}:59`).getTime();
+  const pickDate = (iso: string) => { setDate(iso); setFrom('00:00'); setTo(iso === today ? hhmm() : '23:59'); };
+
   const { data, isLoading } = useQuery({
-    queryKey: ['positions', device.id, day],
+    queryKey: ['positions-window', device.id, winStart, winEnd],
+    enabled: winEnd > winStart,
     queryFn: () =>
-      api<{ data: { points: RoutePoint[]; originalCount: number } }>(
-        `/devices/${device.id}/positions?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(new Date(from.getTime() + DAY - 1).toISOString())}&maxPoints=3000`
+      api<{ data: { points: RoutePoint[] } }>(
+        `/devices/${device.id}/positions?from=${encodeURIComponent(new Date(winStart).toISOString())}&to=${encodeURIComponent(new Date(Math.min(winEnd, Date.now())).toISOString())}&maxPoints=3000`,
       ),
   });
-  const points = data?.data.points || [];
+  const points = useMemo(() => data?.data.points ?? [], [data]);
   const coords = useMemo(() => points.map((p) => ({ lat: p.lat, lon: p.lon })), [points]);
-  const current = index != null ? points[index] : null;
+  const stats = useMemo(() => routeStats(points), [points]);
+
+  const has = points.length > 1;
+  const t0 = has ? Date.parse(points[0].t) : winStart;
+  const t1 = has ? Date.parse(points[points.length - 1].t) : winEnd;
+  const tNow = t0 + progress * (t1 - t0);
+  const cur = has ? pointAt(points, tNow) : null;
+  const playSpeed = has && progress > 0 && progress < 1 ? cur?.speed ?? 0 : null;
+  const clock = new Date(tNow).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
 
   useEffect(() => {
-    setIndex(null);
     setPlaying(false);
-  }, [day]);
+    setProgress(1);
+  }, [winStart, winEnd]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Playback: advance one point every 120 ms.
-  useEffect(() => {
-    if (!playing || points.length < 2) return undefined;
-    const t = setInterval(() => {
-      setIndex((i) => {
-        const next = (i ?? 0) + 1;
-        if (next >= points.length) {
-          setPlaying(false);
-          return points.length - 1;
-        }
-        return next;
-      });
-    }, 120);
-    return () => clearInterval(t);
-  }, [playing, points.length]);
-
-  const shiftDay = (delta: number) => setDay(isoDay(new Date(`${day}T12:00:00`).getTime() + delta * DAY));
-
+  const page = c.dark ? c.bg : '#F2F2F2';
   return (
-    <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.lg, paddingBottom: 48 }}>
-      <Card style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <IconButton icon="chevron-back" label="Previous day" onPress={() => shiftDay(-1)} />
-        <View style={{ alignItems: 'center' }}>
-          <AppText variant="h3">{dayLabel(day)}</AppText>
-          <AppText variant="caption" color="textMuted">{data ? `${data.data.originalCount} POSITIONS` : ' '}</AppText>
-        </View>
-        <IconButton icon="chevron-forward" label="Next day" onPress={() => day < isoDay() && shiftDay(1)} color={day >= isoDay() ? c.border : undefined} />
-      </Card>
+    <View style={{ flex: 1, backgroundColor: page }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 32, gap: 16 }} keyboardShouldPersistTaps="handled">
+        <ReplayFields date={date} from={from} to={to} max={today} onDate={pickDate} onFrom={setFrom} onTo={setTo} />
 
-      <View style={[styles.mapBox, { borderColor: c.border }]}>
-        <AppMap
-          route={coords}
-          dots={[
-            ...(coords.length > 0 ? [{ id: 'start', ...coords[0], color: brand.marigold }] : []),
-            ...(coords.length > 1 ? [{ id: 'end', ...coords[coords.length - 1], color: brand.aubergine }] : []),
-          ]}
-          markers={current ? [{ id: 'playback', lat: current.lat, lon: current.lon, heading: current.heading, vehicle: device.icon }] : []}
-          fitTo={coords}
-          fitKey={`${day}-${coords.length}`}
-        />
-      </View>
-
-      {isLoading ? (
-        <Loading />
-      ) : points.length < 2 ? (
-        <EmptyState icon="footsteps-outline" title="No movement" text="Nothing was recorded on this day." />
-      ) : (
-        <Card style={{ gap: space.md }}>
-          <Row style={{ flexWrap: 'nowrap' }} gap={space.md}>
-            <Pressable
-              accessibilityLabel={playing ? 'Pause' : 'Play'}
-              onPress={() => {
-                if (!playing && (index == null || index >= points.length - 1)) setIndex(0);
-                setPlaying(!playing);
-              }}
-              style={[styles.play, { backgroundColor: c.accent }]}
-            >
-              <Ionicons name={playing ? 'pause' : 'play'} size={26} color={c.onAccent} />
-            </Pressable>
-            <View style={{ flex: 1 }}>
-              <AppText variant="h3">{current ? timeOnly(current.t) : 'Replay the day'}</AppText>
-              <AppText variant="small" color="textMuted">{current ? `${current.speed} km/h` : `${timeOnly(points[0].t)} – ${timeOnly(points[points.length - 1].t)}`}</AppText>
+        <ExpandableMap height={230} style={{ borderRadius: 22 }}>
+          <AppMap
+            initialCenter={coords[0]}
+            initialZoom={13}
+            routes={has ? [{ id: 'day', color: ROUTE_RED, points: coords }] : []}
+            dots={endDots(coords, 'day')}
+            markers={cur ? [{ id: 'now', lat: cur.lat, lon: cur.lon, dot: ROUTE_RED, variant: 'replay' }] : []}
+            fitTo={coords}
+            fitKey={`${winStart}-${winEnd}-${coords.length}`}
+          />
+          {!isLoading && !has && (
+            <View style={{ position: 'absolute', alignSelf: 'center', top: '42%', backgroundColor: c.dark ? c.surface : '#FFFFFF', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18 }}>
+              <Text style={{ fontFamily: fonts.medium, fontSize: 14, color: c.text }}>No driving in this time window</Text>
             </View>
-          </Row>
-          {/* Tap anywhere on the bar to jump there */}
-          <Pressable
-            onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
-            onPress={(e) => setIndex(Math.min(points.length - 1, Math.max(0, Math.round((e.nativeEvent.locationX / barWidth) * (points.length - 1)))))}
-            style={[styles.bar, { backgroundColor: c.surface2 }]}
-            accessibilityLabel="Playback position"
-          >
-            <View style={{ width: `${((index ?? 0) / (points.length - 1)) * 100}%`, height: '100%', backgroundColor: c.accent, borderRadius: 6 }} />
-          </Pressable>
-        </Card>
-      )}
-    </ScrollView>
+          )}
+        </ExpandableMap>
+
+        <Scrubber
+          value={progress}
+          onChange={(v) => { setPlaying(false); setProgress(v); }}
+          playing={playing}
+          onPlay={() => setPlaying(!playing)}
+          disabled={!has}
+          label={has ? clock : undefined}
+        />
+
+        <ReplayTotals
+          distanceKm={km(stats.km)}
+          driveText={duration(stats.driveS)}
+          top={stats.top}
+          avg={stats.avg}
+          playSpeed={playSpeed}
+          size={r.tiny ? 108 : r.small ? 122 : 140}
+          caption={playSpeed != null ? `km/h · ${clock}` : undefined}
+        />
+
+        {has && (
+          <View style={{ gap: 8 }}>
+            <Text style={{ fontFamily: fonts.bold, fontSize: 13, color: c.text }}>Speed (km/h)</Text>
+            <SpeedChart points={points.map((p) => [Date.parse(p.t), p.speed ?? 0] as [number, number])} cursor={progress > 0 && progress < 1 ? progress : null} height={130} />
+          </View>
+        )}
+      </ScrollView>
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  mapBox: { height: 340, borderRadius: radius.md, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
-  play: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
-  bar: { height: 12, borderRadius: 6, overflow: 'hidden' },
-});

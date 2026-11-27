@@ -50,6 +50,13 @@ model User {
   googleId     String?  @unique @map("google_id")
   name         String?
   role         Role     @default(user)
+  phone        String?
+  company      String?
+  // Alert settings (push only; alerts are always recorded)
+  alertOffline  Boolean @default(true) @map("alert_offline")
+  alertLongStop Boolean @default(true) @map("alert_long_stop")
+  alertGpsLost  Boolean @default(true) @map("alert_gps_lost")
+  quietHours    Boolean @default(false) @map("quiet_hours") // no pushes 22:00-07:00 except SOS / power cut
   // When the user accepted the terms & privacy policy (required at signup, DPDP Act)
   termsAcceptedAt DateTime @map("terms_accepted_at") @db.Timestamptz(3)
   // Set when the email was confirmed with a code (null = not verified yet)
@@ -58,6 +65,7 @@ model User {
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   access        DeviceAccess[]
+  drivers       Driver[]
   pushTokens    PushToken[]
   refreshTokens RefreshToken[]
   passwordResets PasswordReset[]
@@ -77,7 +85,13 @@ model Device {
   activationCodeHash String       @map("activation_code_hash")
   status             DeviceStatus @default(inventory)
   name               String?
-  icon               String?
+  icon               String? // vehicle type: car, bike, bus, ...
+  registrationNumber String?      @map("registration_number") // vehicle number plate, e.g. TN 38 AB 1234
+  color              String? // body colour: white, silver, black, blue, red, yellow, orange, green
+  mainDriverId       String?      @map("main_driver_id") @db.Uuid
+  backupDriverId     String?      @map("backup_driver_id") @db.Uuid
+  mainDriver         Driver?      @relation("MainDriver", fields: [mainDriverId], references: [id], onDelete: SetNull)
+  backupDriver       Driver?      @relation("BackupDriver", fields: [backupDriverId], references: [id], onDelete: SetNull)
   speedLimitKmh      Int?         @map("speed_limit_kmh") @db.SmallInt
   timezone           String       @default("Asia/Kolkata")
 
@@ -102,6 +116,8 @@ model Device {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   access     DeviceAccess[]
+  services   ServiceRecord[]
+  tripLogs   TripLog[]
   positions  Position[]
   trips      Trip[]
   dailyStats DailyStat[]
@@ -112,6 +128,66 @@ model Device {
 
   @@index([status])
   @@map("devices")
+}
+
+// A trip the owner starts by hand ("+ New trip"). Everything the vehicle records
+// from started_at until the next trip is started belongs to this trip.
+model TripLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  deviceId  String   @map("device_id") @db.Uuid
+  name      String?
+  startedAt DateTime @default(now()) @map("started_at") @db.Timestamptz(3)
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, startedAt(sort: Desc)])
+  @@map("trip_logs")
+}
+
+// Service history of a vehicle (oil change, tyres, ...). Cost in whole rupees.
+model ServiceRecord {
+  id          String    @id @default(uuid()) @db.Uuid
+  deviceId    String    @map("device_id") @db.Uuid
+  type        String // general, oil, tyres, brakes, battery, other
+  date        DateTime  @db.Date
+  odometerKm  Int?      @map("odometer_km")
+  garage      String?
+  cost        Int?
+  notes       String?
+  nextDueDate DateTime? @map("next_due_date") @db.Date
+  createdBy   String?   @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, date(sort: Desc)])
+  @@map("service_records")
+}
+
+// A user's drivers. Vehicles point at a main and a backup driver.
+model Driver {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  name           String
+  phone          String?
+  licenceNo      String?   @map("licence_no")
+  licenceExpiry  DateTime? @map("licence_expiry") @db.Date
+  avatar         String? // illustration key (a1..a8) when there is no photo
+  photo          Bytes? // small JPEG/PNG (max 70 KB)
+  photoType      String?   @map("photo_type")
+  photoUpdatedAt DateTime? @map("photo_updated_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mainOf   Device[] @relation("MainDriver")
+  backupOf Device[] @relation("BackupDriver")
+
+  @@index([userId])
+  @@map("drivers")
 }
 
 model DeviceAccess {

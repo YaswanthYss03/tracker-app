@@ -62,11 +62,11 @@ export default function GoogleButton({ onSignedIn, signUp }) {
 
   if (!clientId) return null;
   return (
-    <div className="stack" style={{ gap: 12, marginBottom: 16 }}>
+    <div className="stack" style={{ gap: 14 }}>
       <div ref={box} style={{ minHeight: 44, display: 'flex', justifyContent: 'center' }} />
       {signUp && <p className="muted small" style={{ margin: 0, textAlign: 'center' }}>By continuing with Google you agree to the Terms of Service and Privacy Policy.</p>}
       <ErrorBox error={error} />
-      <div className="or-divider"><span>or</span></div>
+      <div className="divider-text">or with email</div>
     </div>
   );
 }

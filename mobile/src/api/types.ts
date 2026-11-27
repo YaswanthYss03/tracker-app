@@ -9,6 +9,10 @@ export type User = {
   /** false for accounts created with Google that never set a password */
   hasPassword?: boolean;
   googleLinked?: boolean;
+  phone?: string | null;
+  company?: string | null;
+  /** Which alerts are pushed to this person (always recorded) */
+  alerts?: { offline: boolean; longStop: boolean; gpsLost: boolean; quietHours: boolean };
 };
 
 export type Live = {
@@ -32,6 +36,18 @@ export type Device = {
   id: string;
   name: string | null;
   icon: string | null;
+  /** Number plate, e.g. TN 38 AB 1234 */
+  registrationNumber?: string | null;
+  /** Main driver's name (same as mainDriver?.name). */
+  driverName?: string | null;
+  mainDriver?: Driver | null;
+  backupDriver?: Driver | null;
+  /** Body colour: white, silver, black, blue, red, yellow, orange, green */
+  color?: string | null;
+  /** km driven today (trips started since local midnight, incl. in progress) */
+  todayKm?: number;
+  /** Next service date YYYY-MM-DD (vehicle list only) */
+  serviceDue?: string | null;
   model: string;
   imei: string;
   simNumber?: string | null;
@@ -42,6 +58,36 @@ export type Device = {
   timezone: string;
   live: Live;
 };
+
+export type Driver = {
+  id: string;
+  name: string;
+  phone: string | null;
+  licenceNo: string | null;
+  /** YYYY-MM-DD */
+  licenceExpiry: string | null;
+  /** Illustration key a1..a8 (used when there is no photo). */
+  avatar: string | null;
+  /** /api/v1/drivers/:id/photo?v=... (needs the access token) */
+  photoUrl: string | null;
+};
+
+export type DriverVehicle = { id: string; name: string | null; registrationNumber: string | null; icon: string | null };
+export type DriverFull = Driver & { mainOf: DriverVehicle[]; backupOf: DriverVehicle[] };
+
+export type ServiceRecord = {
+  id: string;
+  type: 'general' | 'oil' | 'tyres' | 'brakes' | 'battery' | 'other';
+  /** YYYY-MM-DD */
+  date: string;
+  odometerKm: number | null;
+  garage: string | null;
+  /** Whole rupees */
+  cost: number | null;
+  notes: string | null;
+  nextDueDate: string | null;
+};
+export type NextService = { date: string; daysLeft: number; progress: number; type: ServiceRecord['type'] };
 
 export type AlertEvent = {
   id: string;
@@ -83,3 +129,25 @@ export type Geofence = {
 export type Member = { userId: string; email: string; name: string | null; role: 'owner' | 'viewer'; since: string };
 
 export const deviceName = (d: Pick<Device, 'name' | 'imei'>) => d.name || `Tracker ${d.imei.slice(-4)}`;
+
+/** Number plate if set, else the vehicle name. */
+export const plateOrName = (d: Pick<Device, 'name' | 'imei' | 'registrationNumber'>) => d.registrationNumber || deviceName(d);
+
+/** A trip the owner started by hand. New data goes into the latest one. */
+export type TripLog = {
+  id: string;
+  number: number;
+  name: string | null;
+  startedAt: string;
+  /** When the next trip began; null = the current trip. */
+  endedAt: string | null;
+  current: boolean;
+  distanceKm: number;
+  maxSpeed: number;
+  avgSpeed: number;
+  durationS: number;
+  idleS: number;
+  start: { lat: number; lon: number } | null;
+  end: { lat: number; lon: number } | null;
+  points: number;
+};

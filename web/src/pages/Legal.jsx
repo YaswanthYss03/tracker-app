@@ -1,6 +1,7 @@
 // Public Privacy Policy and Terms of Service pages (/privacy, /terms).
 // DRAFT: review with a legal advisor and fill in the business details before launch.
 import { Link } from 'react-router';
+import { Brand } from '../components/Layout';
 
 const UPDATED = '23 October 2026';
 const COMPANY = 'Pavakie';
@@ -8,11 +9,9 @@ const CONTACT = 'support@pavakie.example'; // TODO: replace with the real suppor
 
 function LegalPage({ title, children }) {
   return (
-    <div className="page" style={{ maxWidth: 820 }}>
-      <div className="page-head">
-        <Link to="/" className="brand"><img src="/favicon.svg" alt="" width={26} /> <span>Pavakie Tracker</span></Link>
-      </div>
-      <div className="card legal">
+    <div className="public">
+      <div className="public-head"><Link to="/" aria-label="Pavakie home"><Brand /></Link></div>
+      <div className="legal">
         <h1>{title}</h1>
         <p className="muted small">Last updated {UPDATED}</p>
         {children}

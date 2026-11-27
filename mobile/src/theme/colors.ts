@@ -1,17 +1,15 @@
 /**
- * Brand colors.
- *   Ice Silver #DDE3E8 — background
- *   Deep Aubergine #3A0F34 — most text
- *   Marigold #EAAA00 — highlight
- *
- * Contrast rule: marigold is a FILL/ACCENT color. Never put marigold text on
- * the light background (≈2:1, unreadable); put aubergine text on marigold
- * instead (≈8:1). On the dark theme marigold text is fine.
+ * Brand colours (from the design).
+ *   White   #FFFFFF — page background
+ *   Ink     #202020 — text, icons, dark chips
+ *   Red     #D93636 — accent: buttons, active tab, highlights
+ * Grey #F2F2F2 is used for controls and cards on the white page.
+ * (The keys keep their old names so existing code needn't change.)
  */
 export const brand = {
-  iceSilver: '#DDE3E8',
-  aubergine: '#3A0F34',
-  marigold: '#EAAA00',
+  iceSilver: '#FFFFFF',
+  aubergine: '#202020',
+  marigold: '#D93636',
 };
 
 export type Palette = {
@@ -34,39 +32,39 @@ export type Palette = {
 };
 
 export const light: Palette = {
-  bg: brand.iceSilver,
-  surface: '#F2F5F7',
-  surface2: '#E6EBEF',
-  text: brand.aubergine,
-  textMuted: '#6D5068',
-  accent: brand.marigold,
-  onAccent: brand.aubergine,
-  accentText: brand.aubergine, // marigold text is not readable on ice silver
-  border: '#C3CBD3',
-  success: '#2E7D4F',
-  successSoft: '#D5EBDD',
-  danger: '#B3261E',
-  dangerSoft: '#F6D9D6',
-  offline: '#7A7F89',
-  overlay: 'rgba(58, 15, 52, 0.45)',
+  bg: '#FFFFFF',
+  surface: '#F2F2F2',
+  surface2: '#E4E4E4',
+  text: '#202020',
+  textMuted: '#5E5E5E',
+  accent: '#D93636',
+  onAccent: '#FFFFFF',
+  accentText: '#D93636',
+  border: '#E3E3E3',
+  success: '#1F8A55',
+  successSoft: '#E3F1E8',
+  danger: '#B42828',
+  dangerSoft: '#FBE5E5',
+  offline: '#8A8A8A',
+  overlay: 'rgba(0, 0, 0, 0.4)',
   dark: false,
 };
 
 export const dark: Palette = {
-  bg: '#1C0A1A',
-  surface: '#2B1128',
-  surface2: '#3A1835',
-  text: '#E9EDF1',
-  textMuted: '#B8A9B5',
-  accent: brand.marigold,
-  onAccent: brand.aubergine,
-  accentText: brand.marigold,
-  border: '#45233F',
+  bg: '#141414',
+  surface: '#222222',
+  surface2: '#2E2E2E',
+  text: '#F2F2F2',
+  textMuted: '#A8A8A8',
+  accent: '#E5484D',
+  onAccent: '#FFFFFF',
+  accentText: '#FF7A7F',
+  border: '#333333',
   success: '#5FC78A',
   successSoft: '#1E3A2A',
   danger: '#F2867D',
   dangerSoft: '#4A1F1C',
   offline: '#9AA0AA',
-  overlay: 'rgba(0, 0, 0, 0.55)',
+  overlay: 'rgba(0, 0, 0, 0.6)',
   dark: true,
 };

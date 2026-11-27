@@ -13,13 +13,13 @@ const config: ExpoConfig = {
   name: 'Pavakie Tracker',
   slug: 'pavakie-tracker',
   scheme: 'pavakie',
-  version: '1.1.1',
+  version: '1.2.0',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
   userInterfaceStyle: 'automatic',
   android: {
     package: 'com.pavakie.tracker',
-    versionCode: 3,
+    versionCode: 4,
     googleServicesFile: './google-services.json',
     adaptiveIcon: {
       backgroundColor: '#3A0F34',
@@ -41,6 +41,8 @@ const config: ExpoConfig = {
     ],
     'expo-secure-store',
     ['expo-camera', { cameraPermission: 'Scan the IMEI barcode on your tracker box.', recordAudioAndroid: false }],
+    // Driver photos: take one or choose from files
+    ['expo-image-picker', { photosPermission: 'Choose a photo for a driver.', cameraPermission: 'Take a photo of a driver.', microphonePermission: false }],
     '@react-native-firebase/app',
     '@react-native-firebase/messaging',
     // Sign in with Google (Android reads the OAuth setup from google-services.json)

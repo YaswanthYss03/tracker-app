@@ -9,6 +9,7 @@ import type { Live } from '@/api/types';
 import { API_URL } from '@/config';
 import { dateTime, timeAgo } from '@/lib/format';
 import { AppMap } from '@/components/Map';
+import { ExpandableMap } from '@/components/ExpandableMap';
 import { AppText, Card, ErrorBox, IconButton, Loading, Pill, Row } from '@/components/ui';
 import { radius, space, useColors } from '@/theme';
 
@@ -54,14 +55,14 @@ export default function ShareView() {
             </Row>
             <AppText variant="small" color="textMuted">Updated {timeAgo(state?.gpsTime)} · link expires {dateTime(info.expiresAt)}</AppText>
           </Card>
-          <View style={[styles.mapBox, { borderColor: c.border }]}>
+          <ExpandableMap height={300}>
             <AppMap
               initialCenter={pos || undefined}
               initialZoom={16}
               markers={pos ? [{ id: 'shared', ...pos, heading: state?.heading, online: state?.online }] : []}
               follow={pos}
             />
-          </View>
+          </ExpandableMap>
         </View>
       )}
     </SafeAreaView>

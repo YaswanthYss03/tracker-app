@@ -11,6 +11,9 @@ import { AppText, Button, Card, Divider, ErrorBox, Field, Loading, Pill, Row, Se
 import { space } from '@/theme';
 import type { TabProps } from './types';
 
+const H3 = { fontSize: 15, lineHeight: 20 } as const;
+const S12 = { fontSize: 12, lineHeight: 17 } as const;
+
 const DURATIONS: [string, string][] = [['60', '1 hour'], ['240', '4 hours'], ['1440', '1 day'], ['10080', '7 days']];
 
 export function SharingTab({ device }: TabProps) {
@@ -48,10 +51,10 @@ export function SharingTab({ device }: TabProps) {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.lg, paddingBottom: 48 }}>
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 8, gap: 14, paddingBottom: 28 }}>
       <Card style={{ gap: space.md }}>
-        <AppText variant="h3">Family & friends</AppText>
-        <AppText variant="small" color="textMuted">They need an account. Viewers see location, history and alerts but can't change settings.</AppText>
+        <AppText variant="h3" style={H3}>Family & friends</AppText>
+        <AppText variant="small" color="textMuted" style={S12}>They need an account. Viewers see location, history and alerts but can't change settings.</AppText>
         <Field label="Their account email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
         <Button title="Share" icon="person-add-outline" small disabled={!email.includes('@')} onPress={addViewer} />
         <Divider />
@@ -67,8 +70,8 @@ export function SharingTab({ device }: TabProps) {
       </Card>
 
       <Card style={{ gap: space.md }}>
-        <AppText variant="h3">Live location link</AppText>
-        <AppText variant="small" color="textMuted">Anyone with the link sees the live position only, until it expires.</AppText>
+        <AppText variant="h3" style={H3}>Live location link</AppText>
+        <AppText variant="small" color="textMuted" style={S12}>Anyone with the link sees the live position only, until it expires.</AppText>
         <View style={{ marginHorizontal: -space.lg }}>
           <Segmented value={minutes} options={DURATIONS} onChange={setMinutes} />
         </View>

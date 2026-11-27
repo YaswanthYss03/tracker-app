@@ -1,111 +1,217 @@
-// Map tab: every vehicle on one full-screen map. Tap a vehicle for a quick
-// card (speed, status, Live / History) without leaving the map.
-import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+// Map tab (design): every vehicle as a round bubble with its picture and number
+// plate (red pulse on the selected one). Controls on the right: map/satellite,
+// zoom, show all. Bottom sheet: plate chips to pick a vehicle, its picture,
+// plate and speed, the street address, and ‹ Details › to step through.
+import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { VehicleBadge } from '@/components/VehicleArt';
-import { deviceName } from '@/api/types';
+import { plateOrName } from '@/api/types';
 import { useTrackers } from '@/live/TrackersProvider';
-import { timeAgo } from '@/lib/format';
-import { AppMap, type LatLon } from '@/components/Map';
-import { AppText, Button, EmptyState, IconButton, Loading, Pill, Row } from '@/components/ui';
-import { radius, space, useColors } from '@/theme';
+import { shortAddress, useAddress } from '@/lib/address';
+import { usePref } from '@/lib/prefs';
+import { STATUS_DASHED, STATUS_LABEL, STATUS_ORDER as ORDER, STATUS_RING, statusGroup, type StatusGroup } from '@/lib/vehicleStatus';
+import { selectVehicle, useSelectedVehicle } from '@/lib/selectedVehicle';
+import { AppMap, type AppMapHandle, type LatLon } from '@/components/Map';
+import { VehicleTile } from '@/components/kit';
+import { DIcon, type DesignIconName } from '@/components/DesignIcon';
+import { Button, EmptyState, Loading } from '@/components/ui';
+import { fonts } from '@/theme';
+import { useResponsive } from '@/lib/responsive';
+import { useHomeColors as useColors } from '@/theme/designHome';
+
+type HC = ReturnType<typeof useColors>;
 
 export default function MapTab() {
   const c = useColors();
+  const r = useResponsive();
+  const insets = useSafeAreaInsets();
   const { devices, stateOf, isLoading } = useTrackers();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [focus, setFocus] = useState<LatLon | null>(null);
+  const platesOnMap = usePref('platesOnMap');
+  const map = useRef<AppMapHandle>(null);
+  const chips = useRef<ComponentRef<typeof ScrollView>>(null);
+  const selectedId = useSelectedVehicle();
   const [fitCount, setFitCount] = useState(0);
+  const [satellite, setSatellite] = useState(false);
+  const [sheetH, setSheetH] = useState(0);
 
-  const located = devices.filter((d) => stateOf(d).lat != null);
-  const points = located.map((d) => ({ lat: stateOf(d).lat!, lon: stateOf(d).lon! }));
-  const selected = useMemo(() => devices.find((d) => d.id === selectedId) || null, [devices, selectedId]);
-  const sel = selected ? stateOf(selected) : null;
+  // Vehicles in a stable order: moving first, then by plate.
+  const rows = useMemo(() => devices
+    .map((d) => ({ d, s: stateOf(d), g: statusGroup(stateOf(d)) }))
+    .sort((a, b) => ORDER[a.g] - ORDER[b.g] || plateOrName(a.d).localeCompare(plateOrName(b.d))),
+  [devices, stateOf]);
+  const located = rows.filter((r) => r.s.lat != null && r.s.lon != null);
+  const points: LatLon[] = located.map((r) => ({ lat: r.s.lat!, lon: r.s.lon! }));
+
+  // Keep a vehicle selected (the first one on the map, if nothing else).
+  useEffect(() => {
+    if (!rows.length) return;
+    if (!selectedId || !rows.some((r) => r.d.id === selectedId)) selectVehicle((located[0] ?? rows[0]).d.id);
+  }, [rows, located, selectedId]);
+
+  const index = Math.max(0, rows.findIndex((r) => r.d.id === selectedId));
+  const sel = rows[index];
+  const selPos = sel && sel.s.lat != null ? { lat: sel.s.lat, lon: sel.s.lon! } : null;
+  const { address, isLoading: addrLoading } = useAddress(selPos?.lat, selPos?.lon);
+
+  function select(id: string) {
+    selectVehicle(id);
+    const i = rows.findIndex((r) => r.d.id === id);
+    chips.current?.scrollTo({ x: Math.max(0, i * 130 - 40), animated: true });
+  }
+  const step = (by: number) => rows.length && select(rows[(index + by + rows.length) % rows.length].d.id);
 
   if (isLoading) return <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}><Loading /></SafeAreaView>;
-  if (located.length === 0) {
+  if (!rows.length) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: c.bg, justifyContent: 'center' }}>
         <EmptyState
           icon="map-outline"
           title="Nothing on the map yet"
-          text={devices.length ? 'Your trackers appear here once they send a GPS position.' : 'Add a tracker to see it on the map.'}
-          action={devices.length ? undefined : <Button title="Add tracker" icon="add" onPress={() => router.push('/add-tracker')} />}
+          text="Add a vehicle to see it on the map."
+          action={<Button title="Add vehicle" icon="add" onPress={() => router.push('/add-tracker')} />}
         />
       </SafeAreaView>
     );
   }
 
+  const g = sel.g;
+  const hasSpeed = g === 'moving' || g === 'stopped';
+  const addressText = !selPos
+    ? 'No GPS position yet'
+    : address ? shortAddress(address) : (addrLoading ? 'Finding address…' : `${selPos.lat.toFixed(5)}, ${selPos.lon.toFixed(5)}`);
+
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
       <AppMap
+        ref={map}
         style={StyleSheet.absoluteFill}
         initialCenter={points[0]}
         initialZoom={13}
-        markers={located.map((d) => {
-          const s = stateOf(d);
-          return { id: d.id, lat: s.lat!, lon: s.lon!, heading: s.heading, online: s.online, label: deviceName(d), vehicle: d.icon };
-        })}
+        design
+        satellite={satellite}
+        showLabels={platesOnMap}
+        selectedId={selectedId}
+        attribution="bottom-left"
+        padding={{ top: insets.top + 20, bottom: sheetH + 20, left: 20, right: 70 }}
+        markers={located.map((r) => ({
+          id: r.d.id, lat: r.s.lat!, lon: r.s.lon!, label: plateOrName(r.d), vehicle: r.d.icon,
+          ring: STATUS_RING[r.g], dashed: STATUS_DASHED[r.g],
+        }))}
         fitTo={points}
         fitKey={`${located.length}-${fitCount}`}
-        follow={focus}
-        onMarkerPress={(id) => {
-          setSelectedId(id);
-          const s = located.find((d) => d.id === id);
-          if (s) setFocus({ lat: stateOf(s).lat!, lon: stateOf(s).lon! });
-        }}
+        follow={selPos}
+        onMarkerPress={select}
       />
 
-      <SafeAreaView edges={['top']} style={styles.topRight} pointerEvents="box-none">
-        <IconButton
-          icon="scan-outline"
-          label="Show all vehicles"
-          onPress={() => {
-            setFocus(null);
-            setSelectedId(null);
-            setFitCount((n) => n + 1);
-          }}
-        />
-      </SafeAreaView>
-
-      {selected && sel && (
-        <View style={[styles.sheet, { backgroundColor: c.surface, borderColor: c.border }]}>
-          <Pressable onPress={() => router.push(`/device/${selected.id}`)} style={styles.sheetTop}>
-            <VehicleBadge type={selected.icon} online={sel.online} />
-            <View style={{ flex: 1, gap: 2 }}>
-              <AppText variant="h3" numberOfLines={1}>{deviceName(selected)}</AppText>
-              <Row gap={6}>
-                <Pill label={sel.online ? 'Online' : 'Offline'} tone={sel.online ? 'ok' : 'offline'} />
-                <AppText variant="small" color="textMuted">{timeAgo(sel.lastSeenAt)}</AppText>
-              </Row>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <AppText variant="display">{sel.speed ?? 0}</AppText>
-              <AppText variant="label" color="textMuted">KM/H</AppText>
-            </View>
-          </Pressable>
-          <Row gap={space.sm} style={{ flexWrap: 'nowrap' }}>
-            <Button title="Live" icon="locate-outline" small onPress={() => router.push(`/device/${selected.id}?tab=live`)} style={{ flex: 1 }} />
-            <Button title="History" icon="time-outline" small variant="secondary" onPress={() => router.push(`/device/${selected.id}?tab=history`)} style={{ flex: 1 }} />
-            <Pressable accessibilityLabel="Close" onPress={() => setSelectedId(null)} hitSlop={10} style={styles.close}>
-              <Ionicons name="close" size={22} color={c.textMuted} />
-            </Pressable>
-          </Row>
+      {/* Controls (right): map/satellite, zoom, show all */}
+      <View style={[styles.controls, { top: insets.top + 12 }]} pointerEvents="box-none">
+        <Pressable
+          onPress={() => setSatellite(!satellite)}
+          accessibilityRole="button"
+          accessibilityState={{ selected: satellite }}
+          accessibilityLabel="Satellite view"
+          style={[styles.layerBtn, shadow, { backgroundColor: satellite ? '#202020' : '#FFFFFF' }]}
+        >
+          <DIcon name="layers" size={20} strokeWidth={2} color={satellite ? '#FFFFFF' : '#202020'} />
+          <Text style={{ fontFamily: fonts.bold, fontSize: 10, lineHeight: 10, color: satellite ? '#FFFFFF' : '#202020' }}>{satellite ? 'SAT' : 'MAP'}</Text>
+        </Pressable>
+        <View style={[styles.zoom, shadow]}>
+          <CtlBtn icon="plus" label="Zoom in" onPress={() => map.current?.zoomIn()} />
+          <CtlBtn icon="minus" label="Zoom out" onPress={() => map.current?.zoomOut()} />
         </View>
-      )}
+        <Pressable onPress={() => setFitCount((n) => n + 1)} accessibilityRole="button" accessibilityLabel="Show all vehicles" style={[styles.fit, shadow]}>
+          <DIcon name="fit" size={20} strokeWidth={2} color="#202020" />
+        </Pressable>
+      </View>
+
+      {/* Bottom sheet */}
+      <View onLayout={(e) => setSheetH(e.nativeEvent.layout.height)} style={[styles.sheet, { backgroundColor: c.dark ? c.surface : '#FFFFFF' }]}>
+        <View style={styles.handle} />
+
+        <ScrollView ref={chips} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 18, paddingBottom: 2 }}>
+          {rows.map((r) => (
+            <PlateChip key={r.d.id} plate={plateOrName(r.d)} group={r.g} selected={r.d.id === selectedId} onPress={() => select(r.d.id)} c={c} />
+          ))}
+        </ScrollView>
+
+        <View style={styles.vehicle}>
+          <VehicleTile type={sel.d.icon} color={sel.d.color} width={r.small ? 62 : 74} height={r.small ? 46 : 52} dimmed={g === 'offline'} deep style={{ borderRadius: r.small ? 14 : 16 }} />
+          <Text numberOfLines={1} maxFontSizeMultiplier={1.2} style={{ flex: 1, minWidth: 0, fontFamily: fonts.mono, fontSize: r.small ? 15 : 17, color: c.text }}>{plateOrName(sel.d)}</Text>
+          <Text maxFontSizeMultiplier={1.2} numberOfLines={1}>
+            <Text style={hasSpeed
+              ? { fontFamily: fonts.bold, fontSize: r.small ? 24 : 28, letterSpacing: -0.6, color: c.text }
+              : { fontFamily: fonts.bold, fontSize: 14, color: g === 'nogps' ? c.amberText : c.textMuted }}>
+              {hasSpeed ? String(sel.s.speed ?? 0) : STATUS_LABEL[g]}
+            </Text>
+            {hasSpeed ? <Text style={{ fontFamily: fonts.medium, fontSize: 13, color: c.textMuted }}> km/h</Text> : null}
+          </Text>
+        </View>
+
+        <View style={styles.address}>
+          <DIcon name="pin" size={16} strokeWidth={2} color={c.textMuted} />
+          <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: selPos ? (c.dark ? c.text : '#3A3A3A') : c.textMuted }}>{addressText}</Text>
+        </View>
+
+        <View style={styles.nav}>
+          <RoundNav icon="chevL" label="Previous vehicle" onPress={() => step(-1)} c={c} />
+          <Pressable onPress={() => router.push(`/device/${sel.d.id}?from=map`)} accessibilityRole="button" style={[styles.details, { backgroundColor: c.accent }]}>
+            <Text style={{ fontFamily: fonts.bold, fontSize: 16, color: '#FFFFFF' }}>Details</Text>
+          </Pressable>
+          <RoundNav icon="chevR" label="Next vehicle" onPress={() => step(1)} c={c} />
+        </View>
+      </View>
     </View>
   );
 }
 
+function CtlBtn({ icon, label, onPress }: { icon: DesignIconName; label: string; onPress: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={({ pressed }) => ({ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}>
+      <DIcon name={icon} size={20} strokeWidth={2.2} color="#202020" />
+    </Pressable>
+  );
+}
+
+function RoundNav({ icon, label, onPress, c }: { icon: DesignIconName; label: string; onPress: () => void; c: HC }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={({ pressed }) => [styles.round, { backgroundColor: c.surface, opacity: pressed ? 0.7 : 1 }]}>
+      <DIcon name={icon} size={20} strokeWidth={2.2} color={c.text} />
+    </Pressable>
+  );
+}
+
+/** Pill with a status dot and the plate; dark when selected. */
+function PlateChip({ plate, group, selected, onPress, c }: { plate: string; group: StatusGroup; selected: boolean; onPress: () => void; c: HC }) {
+  const ring = STATUS_RING[group];
+  // On the dark selected chip a dark dot would vanish: use white.
+  const dot = selected && group === 'stopped' ? '#FFFFFF' : ring;
+  const fg = selected ? '#FFFFFF' : c.text;
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`${plate}, ${STATUS_LABEL[group]}`} style={[styles.chip, { backgroundColor: selected ? '#202020' : c.surface }]}>
+      <View style={[styles.dot, group === 'offline' ? { borderWidth: 1.5, borderColor: selected ? '#FFFFFF' : ring } : { backgroundColor: dot }]} />
+      <Text maxFontSizeMultiplier={1.2} style={{ fontFamily: fonts.mono, fontSize: 13, color: fg }}>{plate}</Text>
+    </Pressable>
+  );
+}
+
+const shadow = { elevation: 4, shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 10, shadowOffset: { width: 0, height: 2 } };
 const styles = StyleSheet.create({
-  topRight: { position: 'absolute', top: 0, right: 0, padding: space.lg },
+  controls: { position: 'absolute', right: 12, gap: 8, alignItems: 'center' },
+  layerBtn: { width: 44, height: 52, borderRadius: 22, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  zoom: { width: 44, borderRadius: 22, backgroundColor: '#FFFFFF', overflow: 'hidden' },
+  fit: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   sheet: {
-    position: 'absolute', left: space.md, right: space.md, bottom: space.md,
-    borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, padding: space.lg, gap: space.md, elevation: 6,
+    position: 'absolute', left: 0, right: 0, bottom: 0, gap: 12, paddingTop: 8, paddingBottom: 16,
+    borderTopLeftRadius: 26, borderTopRightRadius: 26,
+    elevation: 12, shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 30, shadowOffset: { width: 0, height: -8 },
   },
-  sheetTop: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  close: { width: 40, alignItems: 'center', justifyContent: 'center' },
+  handle: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: '#D6D6D6' },
+  chip: { height: 38, paddingHorizontal: 13, borderRadius: 19, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  vehicle: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18 },
+  address: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18, minHeight: 20, overflow: 'hidden' },
+  nav: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18 },
+  round: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
+  details: { flex: 1, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
 });

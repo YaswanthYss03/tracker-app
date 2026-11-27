@@ -14,7 +14,8 @@ let current: ThemePref = 'system';
 const listeners = new Set<(p: ThemePref) => void>();
 
 function apply(pref: ThemePref) {
-  Appearance.setColorScheme(pref === 'system' ? 'auto' : pref);
+  // The web build of React Native has no setColorScheme; the app then follows the browser.
+  if (typeof Appearance.setColorScheme === 'function') Appearance.setColorScheme(pref === 'system' ? 'auto' : pref);
 }
 
 /** Call once at startup, before the first screen renders. */

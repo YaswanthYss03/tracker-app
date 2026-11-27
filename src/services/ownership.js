@@ -32,6 +32,7 @@ async function wipeHistory(tx, deviceId) {
   await tx.event.deleteMany({ where: { deviceId } });
   await tx.geofence.deleteMany({ where: { deviceId } });
   await tx.shareLink.deleteMany({ where: { deviceId } });
+  await tx.serviceRecord.deleteMany({ where: { deviceId } });
 }
 
 /**
@@ -188,6 +189,10 @@ function createOwnershipService({ cache } = {}) {
           status: 'inventory',
           name: null,
           icon: null,
+          registrationNumber: null,
+          color: null,
+          mainDriverId: null,
+          backupDriverId: null,
           speedLimitKmh: null,
           lastLat: null,
           lastLon: null,

@@ -46,6 +46,11 @@ function customerDevice(device, access, { cache }) {
     id: device.id,
     name: device.name,
     icon: device.icon,
+    registrationNumber: device.registrationNumber ?? null,
+    color: device.color ?? null,
+    mainDriver: device.mainDriver ? driverDto(device.mainDriver) : null,
+    backupDriver: device.backupDriver ? driverDto(device.backupDriver) : null,
+    driverName: device.mainDriver?.name ?? null, // older apps
     model: device.model,
     imei: device.imei,
     simNumber: isOwner ? device.simNumber : undefined,
@@ -55,6 +60,19 @@ function customerDevice(device, access, { cache }) {
     speedLimitKmh: device.speedLimitKmh,
     timezone: device.timezone,
     live: liveState(device, cache),
+  };
+}
+
+/** A driver as apps see it. photoUrl changes when the photo does (cache busting). */
+function driverDto(d) {
+  return {
+    id: d.id,
+    name: d.name,
+    phone: d.phone ?? null,
+    licenceNo: d.licenceNo ?? null,
+    licenceExpiry: d.licenceExpiry ? d.licenceExpiry.toISOString().slice(0, 10) : null,
+    avatar: d.avatar ?? null,
+    photoUrl: d.photoUpdatedAt ? `/api/v1/drivers/${d.id}/photo?v=${d.photoUpdatedAt.getTime()}` : null,
   };
 }
 
@@ -106,6 +124,26 @@ function tripDto(t) {
   };
 }
 
+/** A hand-started trip with its numbers. `endedAt` is when the next trip began (null = current one). */
+function tripLogDto(log, { number, endedAt, stats }) {
+  return {
+    id: log.id,
+    number,
+    name: log.name,
+    startedAt: log.startedAt,
+    endedAt,
+    current: !endedAt,
+    distanceKm: Math.round(stats.distanceM / 100) / 10,
+    maxSpeed: stats.maxSpeed,
+    avgSpeed: stats.avgSpeed,
+    durationS: stats.durationS,
+    idleS: stats.idleS,
+    start: stats.startLat != null ? { lat: stats.startLat, lon: stats.startLon } : null,
+    end: stats.endLat != null ? { lat: stats.endLat, lon: stats.endLon } : null,
+    points: stats.points,
+  };
+}
+
 function geofenceDto(f) {
   return {
     id: f.id,
@@ -120,4 +158,4 @@ function geofenceDto(f) {
   };
 }
 
-module.exports = { liveState, customerDevice, adminDevice, member, eventDto, tripDto, geofenceDto };
+module.exports = { driverDto, liveState, customerDevice, adminDevice, member, eventDto, tripDto, tripLogDto, geofenceDto };
