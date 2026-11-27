@@ -5,8 +5,8 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAddress } from '../lib/data';
 import { duration, km, shortAddress, timeOnly } from '../lib/format';
-import { usePlayback } from '../lib/playback';
-import { ROUTE_RED, pointAt } from '../lib/replay';
+import { usePlayback, useReplaySpeed } from '../lib/playback';
+import { ROUTE_RED, baseDuration, findStops, pointAt, stopTip } from '../lib/replay';
 import { ReplayTotals, SpeedChart } from './Charts';
 import { MapView } from './MapView';
 import ReplayBar from './ReplayBar';
@@ -18,16 +18,20 @@ export default function TripView({ deviceId, tripId, kind = 'auto' }) {
   const q = useQuery({ queryKey: ['trip-route', route, deviceId, tripId], queryFn: () => api(`/devices/${deviceId}/${route}/${tripId}/route?maxPoints=1500`), refetchInterval: kind === 'log' ? 20_000 : false });
   const trip = q.data?.data.trip;
   const points = useMemo(() => q.data?.data.points || [], [q.data]);
-  const pb = usePlayback(10_000);
+  const [speed, setSpeed] = useReplaySpeed();
   const has = points.length > 1;
   const t0 = has ? Date.parse(points[0].t) : 0;
   const t1 = has ? Date.parse(points[points.length - 1].t) : 1;
+  const pb = usePlayback(baseDuration(t1 - t0), speed);
   const tNow = t0 + pb.progress * (t1 - t0);
   const cur = has ? pointAt(points, tNow) : null;
   const coords = useMemo(() => points.map((p) => ({ lat: p.lat, lon: p.lon })), [points]);
   const hasData = points.length > 0;
   const startAddr = useAddress(hasData ? trip?.start.lat : null, hasData ? trip?.start.lon : null).address;
   const endAddr = useAddress(hasData ? trip?.end?.lat ?? points[points.length - 1]?.lat : null, hasData ? trip?.end?.lon ?? points[points.length - 1]?.lon : null).address;
+
+  const stops = useMemo(() => findStops(points), [points]);
+  const stopMarkers = stops.map((s, i) => ({ id: `stop-${i}`, kind: 'stop', lat: s.lat, lon: s.lon, active: pb.progress < 1 && tNow >= s.start && tNow <= s.end, tip: stopTip(s, null) }));
 
   if (q.isLoading) return <div className="stack"><Skeleton h={300} /><Skeleton h={120} /></div>;
   if (!trip) return <ErrorBox error={q.error ? errorText(q.error) : 'Trip not found'} />;
@@ -45,13 +49,13 @@ export default function TripView({ deviceId, tripId, kind = 'auto' }) {
         expandable
         routes={has ? [{ id: 'trip', color: ROUTE_RED, points: coords }] : []}
         dots={endpoints}
-        markers={cur ? [{ id: 'now', kind: 'replay', lat: cur.lat, lon: cur.lon, fill: ROUTE_RED }] : []}
+        markers={[...stopMarkers, ...(cur ? [{ id: 'now', kind: 'replay', lat: cur.lat, lon: cur.lon, fill: ROUTE_RED }] : [])]}
         fitTo={coords}
         fitKey={`${tripId}-${coords.length}`}
         note={!hasData ? 'Nothing recorded yet' : undefined}
       />
       {!hasData && <p className="muted small center">{trip.inProgress ? 'Everything the vehicle records from now on is saved to this trip until the next trip is started.' : 'Nothing was recorded in this trip.'}</p>}
-      <ReplayBar progress={pb.progress} playing={pb.playing} onToggle={pb.toggle} onSeek={pb.seek} disabled={!has} label={playing ? clock : undefined} />
+      <ReplayBar progress={pb.progress} playing={pb.playing} onToggle={pb.toggle} onSeek={pb.seek} disabled={!has} label={playing ? clock : undefined} speed={speed} onSpeed={setSpeed} />
       <ReplayTotals distanceKm={km(trip.distanceKm)} driveText={duration(driveS)} top={top} avg={avg} playSpeed={playing ? cur?.speed ?? 0 : null} caption={playing ? `km/h ${clock}` : undefined} size={140} />
       {hasData && (
         <div className="stack sm">

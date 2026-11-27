@@ -1,17 +1,18 @@
 // Replay a day: the same design as the Replay tab for one vehicle — date and
 // time pickers, the route on the map with a moving dot, playback bar, the
 // speedometer with totals, and the speed line chart.
-import { useEffect, useMemo, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Text, View } from 'react-native';
+import { LockableScrollView } from '@/components/LockableScrollView';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import type { RoutePoint } from '@/api/types';
 import { duration, isoDay, km } from '@/lib/format';
-import { ROUTE_RED, endDots, hhmm, pointAt, routeStats, validTime } from '@/lib/replay';
+import { ROUTE_RED, endDots, hhmm, pointAt, routeStats, stopDots, validTime } from '@/lib/replay';
 import { AppMap } from '@/components/Map';
 import { ExpandableMap } from '@/components/ExpandableMap';
 import { ReplayFields } from '@/components/ReplayFields';
-import { ReplayTotals, Scrubber, SpeedChart, usePlayback } from '@/components/tripParts';
+import { ReplayTotals, Scrubber, SpeedChart, usePlayback, useReplaySpeed } from '@/components/tripParts';
 import { fonts } from '@/theme';
 import { useResponsive } from '@/lib/responsive';
 import { useHomeColors as useColors } from '@/theme/designHome';
@@ -25,7 +26,9 @@ export function HistoryTab({ device }: TabProps) {
   const [fromText, setFrom] = useState('00:00');
   const [toText, setTo] = useState(hhmm());
   const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = usePlayback(playing, setPlaying);
+  const span = useRef(0);
+  const [speed, setSpeed] = useReplaySpeed();
+  const [progress, setProgress] = usePlayback(playing, setPlaying, span, speed);
 
   const from = validTime(fromText) ? fromText : '00:00';
   const to = validTime(toText) ? toText : date === today ? hhmm() : '23:59';
@@ -48,6 +51,7 @@ export function HistoryTab({ device }: TabProps) {
   const has = points.length > 1;
   const t0 = has ? Date.parse(points[0].t) : winStart;
   const t1 = has ? Date.parse(points[points.length - 1].t) : winEnd;
+  span.current = t1 - t0;
   const tNow = t0 + progress * (t1 - t0);
   const cur = has ? pointAt(points, tNow) : null;
   const playSpeed = has && progress > 0 && progress < 1 ? cur?.speed ?? 0 : null;
@@ -61,7 +65,7 @@ export function HistoryTab({ device }: TabProps) {
   const page = c.dark ? c.bg : '#F2F2F2';
   return (
     <View style={{ flex: 1, backgroundColor: page }}>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 32, gap: 16 }} keyboardShouldPersistTaps="handled">
+      <LockableScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 32, gap: 16 }} keyboardShouldPersistTaps="handled">
         <ReplayFields date={date} from={from} to={to} max={today} onDate={pickDate} onFrom={setFrom} onTo={setTo} />
 
         <ExpandableMap height={230} style={{ borderRadius: 22 }}>
@@ -69,7 +73,7 @@ export function HistoryTab({ device }: TabProps) {
             initialCenter={coords[0]}
             initialZoom={13}
             routes={has ? [{ id: 'day', color: ROUTE_RED, points: coords }] : []}
-            dots={endDots(coords, 'day')}
+            dots={[...endDots(coords, 'day'), ...stopDots(points, 'day', progress > 0 && progress < 1 ? tNow : null)]}
             markers={cur ? [{ id: 'now', lat: cur.lat, lon: cur.lon, dot: ROUTE_RED, variant: 'replay' }] : []}
             fitTo={coords}
             fitKey={`${winStart}-${winEnd}-${coords.length}`}
@@ -88,6 +92,8 @@ export function HistoryTab({ device }: TabProps) {
           onPlay={() => setPlaying(!playing)}
           disabled={!has}
           label={has ? clock : undefined}
+          speed={speed}
+          onSpeed={setSpeed}
         />
 
         <ReplayTotals
@@ -106,7 +112,7 @@ export function HistoryTab({ device }: TabProps) {
             <SpeedChart points={points.map((p) => [Date.parse(p.t), p.speed ?? 0] as [number, number])} cursor={progress > 0 && progress < 1 ? progress : null} height={130} />
           </View>
         )}
-      </ScrollView>
+      </LockableScrollView>
     </View>
   );
 }

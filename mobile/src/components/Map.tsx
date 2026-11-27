@@ -12,6 +12,7 @@
 import { useEffect, useImperativeHandle, useMemo, useRef, useState, type ComponentType, type Ref } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
+import { useScrollLock } from '@/components/LockableScrollView';
 import { brand } from '@/theme/colors';
 import { VEHICLE_ART } from '@/lib/vehicleArt';
 import { MARKER_IMAGES } from '@/lib/vehicleMarkerImages';
@@ -29,7 +30,11 @@ export type MapMarker = LatLon & {
   /** 'replay': coloured dot with a white edge and a white plate tag above it (Replay page). */
   variant?: 'ring' | 'replay';
 };
-export type MapDot = LatLon & { id: string; color: string; /** White dot with a dark ring (trip start / end). */ hollow?: boolean };
+export type MapDot = LatLon & {
+  id: string; color: string; /** White dot with a dark ring (trip start / end). */ hollow?: boolean;
+  /** A place the vehicle stood still: amber "P" with a pop-up (tap), kept open while `active`. */
+  stop?: { title: string; sub: string; plate?: string; active?: boolean };
+};
 export type MapCircle = LatLon & { id: string; radiusM: number; draft?: boolean; color?: string };
 export type MapPolygon = { id: string; points: [number, number][]; color?: string };
 /** Extra coloured lines (e.g. several vehicles' routes when comparing). */
@@ -81,6 +86,7 @@ export function AppMap({
 }: Props) {
   const c = useColors();
   const web = useRef<WebViewHandle>(null);
+  const lockScroll = useScrollLock();
   const [ready, setReady] = useState(false);
   const handlers = useRef({ onMarkerPress, onLongPress });
   handlers.current = { onMarkerPress, onLongPress };
@@ -124,7 +130,12 @@ export function AppMap({
   }
 
   return (
-    <View style={[styles.box, { backgroundColor: c.surface2 }, style]}>
+    <View
+      style={[styles.box, { backgroundColor: c.surface2 }, style]}
+      onTouchStart={() => lockScroll(true)}
+      onTouchEnd={() => lockScroll(false)}
+      onTouchCancel={() => lockScroll(false)}
+    >
       <WebView
         ref={web}
         key={c.dark ? 'dark' : 'light'}
@@ -136,6 +147,7 @@ export function AppMap({
         domStorageEnabled
         setSupportMultipleWindows={false}
         overScrollMode="never"
+        nestedScrollEnabled
         style={{ flex: 1, backgroundColor: 'transparent' }}
       />
     </View>
@@ -184,6 +196,11 @@ function buildHtml({ dark, center, zoom, routeColor, attribution }: { dark: bool
   .labels .pr .lbl{display:flex}
   .pr .lbl{top:auto;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);align-items:center;gap:6px;background:#fff;color:#202020;font:600 12px/1 'DM Sans',sans-serif;letter-spacing:0;padding:6px 9px;border-radius:10px;box-shadow:0 1px 6px rgba(0,0,0,.25)}
   .pr .lbl:before{content:'';width:7px;height:7px;border-radius:50%;background:var(--fill);flex:none}
+  .dot.stop{width:24px;height:24px;box-sizing:border-box;background:#C27400;border:2.5px solid #fff;color:#fff;font:700 12px/19px 'DM Sans',sans-serif;text-align:center;cursor:pointer;box-shadow:0 1px 5px rgba(0,0,0,.35)}
+  .dot.stop.now{width:30px;height:30px;font-size:14px;line-height:25px;box-shadow:0 0 0 5px rgba(194,116,0,.3),0 1px 5px rgba(0,0,0,.35)}
+  .maplibregl-popup-content{padding:9px 12px;border-radius:12px;background:#202020;color:#fff;font:500 12px/1.45 'DM Sans',sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.3)}
+  .maplibregl-popup-content b{font-weight:700;font-size:13px}
+  .maplibregl-popup-anchor-bottom .maplibregl-popup-tip{border-top-color:#202020}
   .dot.hollow{width:12px;height:12px;background:#fff;border:2.5px solid #202020;box-shadow:none}
   /* plain dot (vehicle details) */
   .pd{width:20px;height:20px;cursor:pointer}
@@ -328,6 +345,11 @@ function syncMarkers(list, s) {
   for (const [id, obj] of markerObjs) if (!seen.has(id)) { gliding.delete(obj); obj.marker.remove(); markerObjs.delete(id); }
 }
 
+function stopHtml(s) {
+  const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  return (s.plate ? '<b>' + esc(s.plate) + '</b><br>' : '') + '<b>' + esc(s.title) + '</b><br>' + esc(s.sub);
+}
+
 function syncDots(list) {
   const seen = new Set();
   for (const d of list) {
@@ -335,15 +357,28 @@ function syncDots(list) {
     let obj = dotObjs.get(d.id);
     if (!obj) {
       const el = document.createElement('div');
-      el.className = d.hollow ? 'dot hollow' : 'dot';
+      el.className = d.stop ? 'dot stop' : d.hollow ? 'dot hollow' : 'dot';
+      if (d.stop) el.textContent = 'P';
       obj = { el, marker: new maplibregl.Marker({ element: el }).setLngLat([d.lon, d.lat]).addTo(map) };
+      if (d.stop) obj.marker.setPopup(new maplibregl.Popup({ closeButton: false, offset: 18, maxWidth: '220px' }));
       dotObjs.set(d.id, obj);
     }
-    obj.el.style.background = d.hollow ? '' : d.color;
+    if (d.stop) {
+      const pop = obj.marker.getPopup();
+      pop.setHTML(stopHtml(d.stop));
+      el_now(obj.el, !!d.stop.active);
+      if (d.stop.active && !pop.isOpen()) obj.marker.togglePopup();
+      if (!d.stop.active && obj.wasActive && pop.isOpen()) obj.marker.togglePopup();
+      obj.wasActive = !!d.stop.active;
+      obj.el.style.zIndex = d.stop.active ? '4' : '2';
+    } else {
+      obj.el.style.background = d.hollow ? '' : d.color;
+    }
     obj.marker.setLngLat([d.lon, d.lat]);
   }
   for (const [id, obj] of dotObjs) if (!seen.has(id)) { obj.marker.remove(); dotObjs.delete(id); }
 }
+function el_now(el, on) { el.classList.toggle('now', on); }
 
 function apply(s) {
   design = !!s.design;

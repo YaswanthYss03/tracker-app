@@ -22,7 +22,7 @@ const config: ExpoConfig = {
     versionCode: 4,
     googleServicesFile: './google-services.json',
     adaptiveIcon: {
-      backgroundColor: '#3A0F34',
+      backgroundColor: '#D93636',
       foregroundImage: './assets/images/android-icon-foreground.png',
       monochromeImage: './assets/images/android-icon-monochrome.png',
     },
@@ -33,10 +33,10 @@ const config: ExpoConfig = {
     [
       'expo-splash-screen',
       {
-        backgroundColor: '#DDE3E8',
+        backgroundColor: '#FFFFFF',
         image: './assets/images/splash-icon.png',
         imageWidth: 220,
-        dark: { backgroundColor: '#1C0A1A', image: './assets/images/splash-icon-dark.png' },
+        dark: { backgroundColor: '#141414', image: './assets/images/splash-icon-dark.png' },
       },
     ],
     'expo-secure-store',

@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, View } from 'react-native';
+import { View } from 'react-native';
 import { Link, router } from 'expo-router';
 import { useAuth } from '@/auth/AuthProvider';
 import { api, ApiError, errorText } from '@/api/client';
-import { AppText, Button, ErrorBox, Field, Screen, Wordmark } from '@/components/ui';
+import { AppText, Button, ErrorBox, Field } from '@/components/ui';
+import { AuthScreen } from '@/components/AuthBackdrop';
+import { BrandMark } from '@/components/Brand';
 import { GoogleButton } from '@/components/GoogleButton';
 import { space } from '@/theme';
 
@@ -33,10 +35,9 @@ export default function Login() {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen>
+    <AuthScreen>
         <View style={{ alignItems: 'center', marginVertical: space.xl }}>
-          <Wordmark size={46} />
+          <BrandMark size={28} center />
         </View>
         <AppText variant="h1">Welcome back</AppText>
         <GoogleButton />
@@ -48,7 +49,6 @@ export default function Login() {
         <AppText color="textMuted" center>
           New here? <Link href="/register"><AppText variant="bodyStrong">Create an account</AppText></Link>
         </AppText>
-      </Screen>
-    </KeyboardAvoidingView>
+    </AuthScreen>
   );
 }

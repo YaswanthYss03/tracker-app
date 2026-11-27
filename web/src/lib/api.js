@@ -87,19 +87,35 @@ export class ApiError extends Error {
   }
 }
 
+const NETWORK_MESSAGE = 'No internet connection. Check your network and try again.';
+const SERVER_MESSAGE = "We can't reach the server right now. Please try again in a moment.";
+const TIMEOUT_MS = 20000;
+
+/** fetch that gives up after 20 s and reports "offline" the same way whether the browser knows it or not. */
+async function request(url, init) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new ApiError(NETWORK_MESSAGE, { code: 'NETWORK' });
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  } catch (err) {
+    if (err?.name === 'TimeoutError') throw new ApiError('The server is taking too long to answer. Please try again.', { code: 'NETWORK' });
+    throw new ApiError(NETWORK_MESSAGE, { code: 'NETWORK' });
+  }
+}
+
 let refreshing = null;
 /** Gets a new token pair. Returns false (and logs out) if the session is gone. */
 export function refreshSession() {
   if (!session.refreshToken) return Promise.resolve(false);
   refreshing ??= (async () => {
     try {
-      const res = await fetch(`${BASE}/auth/refresh`, {
+      const res = await request(`${BASE}/auth/refresh`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ refreshToken: session.refreshToken }),
       });
       if (!res.ok) {
-        clearSession();
+        // Only a rejected token ends the session; a server hiccup (5xx) must not log anyone out.
+        if (res.status === 401) clearSession();
         return false;
       }
       const { data } = await res.json();
@@ -126,7 +142,7 @@ export async function getAccessToken() {
  */
 export async function api(path, { method = 'GET', body, auth = true } = {}) {
   const send = () =>
-    fetch(BASE + path, {
+    request(BASE + path, {
       method,
       headers: {
         ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
@@ -150,8 +166,10 @@ export async function api(path, { method = 'GET', body, auth = true } = {}) {
   }
   if (!res.ok) {
     if (res.status === 401 && auth) clearSession();
-    throw new ApiError(json?.error?.message || `Request failed (${res.status})`, {
-      code: json?.error?.code,
+    // A 5xx with no JSON body is the proxy or load balancer answering for a server that is down.
+    const unreachable = res.status >= 500 && !json?.error;
+    throw new ApiError(json?.error?.message || (unreachable ? SERVER_MESSAGE : `Request failed (${res.status})`), {
+      code: json?.error?.code || (unreachable ? 'SERVER' : undefined),
       status: res.status,
       details: json?.error?.details,
     });

@@ -1,7 +1,20 @@
-// Plays progress 0 -> 1 over `durationMs` while playing.
+// Plays progress 0 -> 1 over `baseMs / speed` while playing. `speed` is 1x..10x (see lib/replay.js).
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export function usePlayback(durationMs = 12_000) {
+const KEY = 'gps.replaySpeed';
+const SPEEDS = [1, 2, 3, 5, 10];
+
+/** The chosen replay speed, remembered between visits. */
+export function useReplaySpeed() {
+  const [speed, set] = useState(() => {
+    try { const v = Number(localStorage.getItem(KEY)); return SPEEDS.includes(v) ? v : 1; } catch { return 1; }
+  });
+  const setSpeed = useCallback((v) => { set(v); try { localStorage.setItem(KEY, String(v)); } catch { /* private mode */ } }, []);
+  return [speed, setSpeed];
+}
+
+export function usePlayback(baseMs = 12_000, speed = 1) {
+  const durationMs = Math.max(600, baseMs / speed);
   const [progress, setProgress] = useState(1);
   const [playing, setPlaying] = useState(false);
   const ref = useRef(1);

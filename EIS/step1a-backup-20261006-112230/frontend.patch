@@ -1,0 +1,210 @@
+diff --git a/src/app/(portal)/finance/dashboard/page.tsx b/src/app/(portal)/finance/dashboard/page.tsx
+index 1149f3e..bab6e10 100644
+--- a/src/app/(portal)/finance/dashboard/page.tsx
++++ b/src/app/(portal)/finance/dashboard/page.tsx
+@@ -117,7 +117,13 @@ export default function FinanceDashboardPage() {
+   // Each card carries its own real figure and a share bar, so the grid is a
+   // set of small visualisations rather than a list of links.
+   const totalProposals =
+-    queues.pop_pending + queues.sop_pending + queues.pop_approved + queues.sop_approved + queues.rejected;
++    queues.pop_pending +
++    queues.sop_pending +
++    queues.pop_awaiting_hod +
++    queues.sop_awaiting_hod +
++    queues.pop_approved +
++    queues.sop_approved +
++    queues.rejected;
+   const trackedTotal =
+     delivery.awaiting_dispatch + delivery.in_transit + delivery.delivered + delivery.cancelled;
+ 
+diff --git a/src/modules/finance/ApprovalQueue.tsx b/src/modules/finance/ApprovalQueue.tsx
+index 37f5d02..726ea26 100644
+--- a/src/modules/finance/ApprovalQueue.tsx
++++ b/src/modules/finance/ApprovalQueue.tsx
+@@ -2,6 +2,7 @@
+ 
+ import { useMemo, useState } from "react";
+ import {
++  isFinanceActionable,
+   useProposals,
+   useDecideProposal,
+   useCurrentFund,
+@@ -48,11 +49,16 @@ import { FacultyPicker } from "./FacultyPicker";
+ // database only permits allotment once the order is delivered, so the row
+ // shows its live delivery stage and the action is offered only when it is legal.
+ 
++/** Filter value (not a status) for everything Finance can decide right now. */
++const AWAITING_FINANCE = "awaiting_finance";
++
+ const STATUS_LABEL: Record<string, string> = {
+   pending: "Pending",
+   finance_approved: "Approved",
+   hod_approved: "HoD approved",
+-  principal_approved: "Principal approved",
++  // Legacy status on older rows; the Principal is not part of this workflow
++  // and these are decided by Finance exactly like any HoD-approved proposal.
++  principal_approved: "HoD approved",
+   rejected: "Rejected",
+ };
+ 
+@@ -69,14 +75,21 @@ export function ApprovalQueue({
+ }) {
+   // Defaults to the bucket Finance can actually act on — a raw 'pending' row
+   // hasn't reached the HoD yet, so it lands here as read-only via "All statuses".
+-  const [statusFilter, setStatusFilter] = useState("hod_approved");
++  // AWAITING_FINANCE is a filter value, not a status: it covers every status
++  // the backend lets Finance decide (see isFinanceActionable).
++  const [statusFilter, setStatusFilter] = useState(AWAITING_FINANCE);
+   // Fetch every proposal once and filter in the browser. Fetching per-status
+   // made the tab look empty whenever nothing was pending — even with real
+   // proposals sitting in other states — because the page had no way to know
+   // they existed. Now the counts are always known, so the UI can say so.
+   const { data: allProposals, isLoading } = useProposals(kind);
+   const proposals = useMemo(
+-    () => (statusFilter ? (allProposals ?? []).filter((p) => p.status === statusFilter) : allProposals ?? []),
++    () =>
++      (allProposals ?? []).filter((p) =>
++        statusFilter === AWAITING_FINANCE
++          ? isFinanceActionable(p.status)
++          : !statusFilter || p.status === statusFilter,
++      ),
+     [allProposals, statusFilter],
+   );
+   const { data: fund } = useCurrentFund();
+@@ -141,10 +154,12 @@ export function ApprovalQueue({
+   }, [everything]);
+ 
+   const all = everything;
+-  // "Awaiting decision" = actually actionable by Finance right now, i.e.
+-  // HoD-approved. A raw 'pending' row hasn't reached the HoD yet.
+-  const pendingCount = all.filter((p) => p.status === "hod_approved").length;
+-  const approvedCount = all.filter((p) => p.status === "finance_approved" || p.status === "principal_approved").length;
++  // "Awaiting decision" = actually actionable by Finance right now — the same
++  // set the dashboard counts and the decision endpoint accepts. A raw
++  // 'pending' row hasn't reached the HoD yet. "Approved" means Finance
++  // approved it, i.e. money is committed behind it.
++  const pendingCount = all.filter((p) => isFinanceActionable(p.status)).length;
++  const approvedCount = all.filter((p) => p.status === "finance_approved").length;
+   const committed = all.reduce((s, p) => s + (p.approved_amount ?? 0), 0);
+   const awaitingAllot = (tracking ?? []).filter(
+     (t) => t.quantity_delivered > 0 && t.quantity_allotted < t.quantity_delivered,
+@@ -279,14 +294,13 @@ export function ApprovalQueue({
+         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${entityLabel} by item, reference, vendor or requester…`} style={inputSx} />
+         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={selectSx}>
+           {[
+-            { v: "hod_approved", l: "Awaiting your decision" },
+-            { v: "pending", l: "Awaiting HoD review" },
+-            { v: "finance_approved", l: "Finance approved" },
+-            { v: "principal_approved", l: "Principal approved" },
+-            { v: "rejected", l: "Rejected" },
++            { v: AWAITING_FINANCE, l: "Awaiting your decision", n: pendingCount },
++            { v: "pending", l: "Awaiting HoD review", n: statusCounts.pending ?? 0 },
++            { v: "finance_approved", l: "Finance approved", n: statusCounts.finance_approved ?? 0 },
++            { v: "rejected", l: "Rejected", n: statusCounts.rejected ?? 0 },
+           ].map((o) => (
+             <option key={o.v} value={o.v}>
+-              {o.l} ({statusCounts[o.v] ?? 0})
++              {o.l} ({o.n})
+             </option>
+           ))}
+           <option value="">All statuses ({everything.length})</option>
+@@ -297,8 +311,8 @@ export function ApprovalQueue({
+             <option key={d} value={d}>{d}</option>
+           ))}
+         </select>
+-        {(q || deptFilter || statusFilter !== "hod_approved") && (
+-          <button onClick={() => { setQ(""); setDeptFilter(""); setStatusFilter("hod_approved"); }} style={clearBtnSx}>
++        {(q || deptFilter || statusFilter !== AWAITING_FINANCE) && (
++          <button onClick={() => { setQ(""); setDeptFilter(""); setStatusFilter(AWAITING_FINANCE); }} style={clearBtnSx}>
+             Clear
+           </button>
+         )}
+@@ -338,13 +352,10 @@ export function ApprovalQueue({
+           {rows.map((p, i) => {
+             const open = expanded === p.id;
+             // Finance's real decide() (FinanceApprovalsService) only accepts a
+-            // row once the HoD has approved it — a raw 'pending' row hasn't
+-            // been reviewed by the HoD yet, so approving it here would 409
+-            // (FINANCE_AWAITING_HOD). This used to gate on 'pending' itself,
+-            // matching a since-fixed backend race where Finance could approve
+-            // before the HoD did; now it gates on the same status the backend
+-            // actually requires.
+-            const isActionable = p.status === "hod_approved";
++            // row once the HoD has cleared it — a raw 'pending' row would 409
++            // (FINANCE_AWAITING_HOD). Gated on the same definition the backend
++            // uses, so the button is offered exactly when the decision is legal.
++            const isActionable = isFinanceActionable(p.status);
+             const t = trackingByProposal.get(p.id);
+             const canAllot =
+               t && (t.delivery_status === "delivered" || t.delivery_status === "partially_delivered") &&
+diff --git a/src/modules/finance/TrackingBoard.tsx b/src/modules/finance/TrackingBoard.tsx
+index 958b401..53dc734 100644
+--- a/src/modules/finance/TrackingBoard.tsx
++++ b/src/modules/finance/TrackingBoard.tsx
+@@ -206,7 +206,17 @@ export function TrackingBoard({
+         },
+       },
+       {
+-        onSuccess: () => { setStageModal(null); showToast(`${stageModal.order_number} · ${stageLabel(kind, nextStatus)}`); },
++        onSuccess: (res) => {
++          setStageModal(null);
++          // Cancelling does not return the money by itself; say so rather than
++          // let a standing commitment go unnoticed.
++          const held = res?.unreleased_commitment ?? 0;
++          showToast(
++            held > 0
++              ? `${stageModal.order_number} cancelled · ₹${held.toLocaleString("en-IN")} is still committed from the fund`
++              : `${stageModal.order_number} · ${stageLabel(kind, nextStatus)}`,
++          );
++        },
+         onError: (e) => setErr(e instanceof Error ? e.message : "Could not update the stage"),
+       },
+     );
+diff --git a/src/modules/finance/api/finance.ts b/src/modules/finance/api/finance.ts
+index 714aa58..333887a 100644
+--- a/src/modules/finance/api/finance.ts
++++ b/src/modules/finance/api/finance.ts
+@@ -118,6 +118,18 @@ export interface FinanceProposal {
+   assignment_note: string | null;
+ }
+ 
++/**
++ * Statuses Finance can decide. Mirrors FINANCE_ACTIONABLE_STATUSES in the
++ * backend (finance/approvals/proposal-states.ts): the workflow is
++ * Requester -> HoD -> Finance, and `principal_approved` is a legacy status on
++ * older rows that Finance decides exactly like `hod_approved`.
++ */
++export const FINANCE_ACTIONABLE_STATUSES: readonly string[] = ["hod_approved", "principal_approved"];
++
++export function isFinanceActionable(status: string): boolean {
++  return FINANCE_ACTIONABLE_STATUSES.includes(status);
++}
++
+ /** GET /finance/proposals/:kind?status= */
+ export function useProposals(kind: ProposalKind, status?: string) {
+   return useQuery({
+@@ -263,7 +275,10 @@ export function useUpdateTracking() {
+   const qc = useQueryClient();
+   return useMutation({
+     mutationFn: ({ id, input }: { id: number; input: UpdateTrackingInput }) =>
+-      apiClient.put<{ id: number; delivery_status: string }>(`/finance/tracking/${id}`, input),
++      apiClient.put<{ id: number; delivery_status: string; unreleased_commitment?: number }>(
++        `/finance/tracking/${id}`,
++        input,
++      ),
+     onSuccess: () => void qc.invalidateQueries({ queryKey: KEY }),
+   });
+ }
+@@ -358,8 +373,12 @@ export interface FinanceDashboard {
+   /** Per-year figures, so each year is visible in its own right. */
+   fund_years: FinanceFundSummary[];
+   queues: {
++    /** Decidable by Finance now (HoD has cleared them). */
+     pop_pending: number;
+     sop_pending: number;
++    /** Still with the HoD — context only. */
++    pop_awaiting_hod: number;
++    sop_awaiting_hod: number;
+     pop_approved: number;
+     sop_approved: number;
+     rejected: number;

@@ -13,7 +13,7 @@
 const express = require('express');
 const { parse, wrap, z, schemas } = require('../validate');
 const { driverDto } = require('../dto');
-const { badRequest, notFound } = require('../../lib/errors');
+const { badRequest, conflict, notFound } = require('../../lib/errors');
 const { prisma } = require('../../db/client');
 const driversRepo = require('../../db/repositories/drivers');
 
@@ -49,6 +49,18 @@ function dataOf(body) {
   return data;
 }
 
+// "TN99 2011-0009931" and "tn992011 0009931" are the same licence.
+const licenceKey = (v) => String(v).toUpperCase().replace(/[\s-]/g, '');
+
+/** No two of my drivers may share a licence number (spacing, hyphens and case do not count). */
+async function assertLicenceFree(userId, licenceNo, exceptId) {
+  if (!licenceNo) return;
+  const key = licenceKey(licenceNo);
+  const rows = await prisma.driver.findMany({ where: { userId, licenceNo: { not: null }, ...(exceptId ? { id: { not: exceptId } } : {}) }, select: { name: true, licenceNo: true } });
+  const other = rows.find((r) => licenceKey(r.licenceNo) === key);
+  if (other) throw conflict(`${other.name} already has this licence number. Each driver needs a different one.`);
+}
+
 const vehicleDto = (v) => ({ id: v.id, name: v.name, registrationNumber: v.registrationNumber, icon: v.icon });
 const fullDto = (d) => ({ ...driverDto(d), mainOf: d.mainOf.map(vehicleDto), backupOf: d.backupOf.map(vehicleDto) });
 
@@ -81,6 +93,7 @@ function createDriversRouter() {
     if ((await prisma.driver.count({ where: { userId: req.user.id } })) >= MAX_DRIVERS) {
       throw badRequest(`You can add at most ${MAX_DRIVERS} drivers`);
     }
+    await assertLicenceFree(req.user.id, body.licenceNo, null);
     const id = await prisma.$transaction(async (tx) => {
       const d = await tx.driver.create({ data: { userId: req.user.id, ...dataOf(body) }, select: { id: true } });
       if (body.mainVehicleIds) await setMainVehicles(tx, req.user.id, d.id, body.mainVehicleIds);
@@ -96,6 +109,7 @@ function createDriversRouter() {
   router.patch('/:id', wrap(async (req, res) => {
     const d = await owned(req);
     const body = parse(updateSchema, blankToNull(req.body));
+    await assertLicenceFree(req.user.id, body.licenceNo, d.id);
     await prisma.$transaction(async (tx) => {
       const data = dataOf(body);
       if (Object.keys(data).length) await tx.driver.update({ where: { id: d.id }, data });

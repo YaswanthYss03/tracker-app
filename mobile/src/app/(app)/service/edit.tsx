@@ -155,7 +155,7 @@ export default function ServiceEditor() {
               <Input label="Odometer (km)" value={odometer} onChangeText={(t) => setOdometer(t.replace(/\D/g, '').slice(0, 7))} placeholder="e.g. 97120" keyboardType="number-pad" error={errors.odometer} />
             </View>
           </View>
-          <Input label="Garage" value={garage} onChangeText={setGarage} placeholder="e.g. KG Auto Care, Gandhipuram" maxLength={80} />
+          <Input label="Garage" value={garage} onChangeText={setGarage} placeholder="Garage or workshop name" maxLength={80} />
           <Input label="Cost (₹)" value={cost} onChangeText={(t) => setCost(t.replace(/\D/g, '').slice(0, 8))} placeholder="e.g. 7200" keyboardType="number-pad" error={errors.cost} />
 
           <View style={{ gap: space.sm }}>

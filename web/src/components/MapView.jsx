@@ -2,7 +2,8 @@
 //   <MapView markers routes dots circles polygons fitTo fitKey follow ... tools expandable />
 // Marker kinds: 'vehicle' (round picture with a status ring, plate tag, red pulse when selected),
 //               'dot'     (vehicle colour dot with a red ring: the details page),
-//               'replay'  (coloured dot with a white edge and an optional plate tag).
+//               'replay'  (coloured dot with a white edge and an optional plate tag),
+//               'stop'    (amber "P": the vehicle stood still here; `tip` is the pop-up, `active` keeps it open).
 import { useEffect, useImperativeHandle, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -19,6 +20,7 @@ function art(type) {
 }
 
 function markerHtml(m, showLabels) {
+  if (m.kind === 'stop') return `<div class="mk stop ${m.active ? 'now' : ''}"><div class="sp">P</div></div>`;
   if (m.kind === 'dot') return `<div class="mk pdot" style="--fill:${m.fill || '#202020'}"><div class="halo"></div><div class="pt"></div></div>`;
   if (m.kind === 'replay') {
     return `<div class="mk" style="--fill:${m.fill || '#d93636'}"><div class="pt"></div>${m.label ? `<div class="ptag"><i></i>${esc(m.label)}</div>` : ''}</div>`;
@@ -27,8 +29,9 @@ function markerHtml(m, showLabels) {
     '<div class="core"></div><div class="ring"></div><div class="ring b"></div>' +
     `<div class="bub">${art(m.vehicle)}</div><div class="tag">${esc(m.label || '')}</div></div>`;
 }
-const keyOf = (m, showLabels) => [m.kind, m.fill, m.ring, m.dashed, m.selected, m.vehicle, m.label, m.tip, showLabels].join('|');
+const keyOf = (m, showLabels) => [m.kind, m.fill, m.ring, m.dashed, m.selected, m.vehicle, m.label, m.tip, m.active, showLabels].join('|');
 const tipOptions = { direction: 'top', offset: [0, -28], className: 'mk-tip', opacity: 1 };
+const tipFor = (d) => (d.kind === 'stop' ? { ...tipOptions, offset: [0, -14], permanent: !!d.active } : tipOptions);
 
 export default function MapCanvas({
   ref, markers = [], routes = [], dots = [], circles = [], polygons = [], fitTo, fitKey, follow, satellite = false,
@@ -92,17 +95,17 @@ export default function MapCanvas({
       const key = keyOf(d, showLabels);
       let o = store.get(d.id);
       if (!o) {
-        const marker = L.marker([d.lat, d.lon], { icon: L.divIcon({ className: '', html: markerHtml(d, showLabels), iconSize: [0, 0] }), keyboard: false, zIndexOffset: d.selected ? 1000 : 0 });
+        const marker = L.marker([d.lat, d.lon], { icon: L.divIcon({ className: '', html: markerHtml(d, showLabels), iconSize: [0, 0] }), keyboard: false, zIndexOffset: d.selected ? 1000 : d.kind === 'replay' ? 500 : 0 });
         marker.on('click', (e) => { L.DomEvent.stopPropagation(e); cb.current.onMarkerClick?.(d.id); });
-        if (d.tip) marker.bindTooltip(d.tip, tipOptions);
+        if (d.tip) marker.bindTooltip(d.tip, tipFor(d));
         marker.addTo(m);
         o = { marker, key, to: [d.lat, d.lon], last: performance.now() };
         store.set(d.id, o);
       } else {
         if (o.key !== key) {
           o.marker.setIcon(L.divIcon({ className: '', html: markerHtml(d, showLabels), iconSize: [0, 0] }));
-          o.marker.setZIndexOffset(d.selected ? 1000 : 0);
-          if (d.tip) { if (o.marker.getTooltip()) o.marker.setTooltipContent(d.tip); else o.marker.bindTooltip(d.tip, tipOptions); }
+          o.marker.setZIndexOffset(d.selected ? 1000 : d.kind === 'replay' ? 500 : 0);
+          if (d.tip) { o.marker.unbindTooltip(); o.marker.bindTooltip(d.tip, tipFor(d)); }
           o.key = key;
         }
         glide(o, d.lat, d.lon);

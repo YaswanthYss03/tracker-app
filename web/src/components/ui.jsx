@@ -64,9 +64,21 @@ export function Field({ label, hint, error, children, className = '' }) {
 }
 
 export function Input({ label, hint, error, className = '', ...rest }) {
+  // A password field gets an eye to show or hide what was typed.
+  const isPassword = rest.type === 'password';
+  const [shown, setShown] = useState(false);
   return (
     <Field label={label} hint={hint} error={error}>
-      {(id) => <input id={id} className={`input ${error ? 'bad' : ''} ${className}`} {...rest} />}
+      {(id) => (isPassword ? (
+        <div className="pw-wrap">
+          <input id={id} className={`input pw ${error ? 'bad' : ''} ${className}`} {...rest} type={shown ? 'text' : 'password'} />
+          <button type="button" className="pw-eye" onClick={() => setShown((v) => !v)} aria-label={shown ? 'Hide password' : 'Show password'} aria-pressed={shown} title={shown ? 'Hide password' : 'Show password'}>
+            <Icon name={shown ? 'eyeOff' : 'eye'} size={20} />
+          </button>
+        </div>
+      ) : (
+        <input id={id} className={`input ${error ? 'bad' : ''} ${className}`} {...rest} />
+      ))}
     </Field>
   );
 }
@@ -190,8 +202,15 @@ export function Kpi({ icon, tone, label, value, unit, foot, onClick }) {
   );
 }
 
-/** Modal dialog; on small screens it slides up from the bottom. Esc closes. */
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Modal dialog; on small screens it slides up from the bottom.
+ * Keyboard: focus moves into the dialog and comes back when it closes, Tab stays inside it,
+ * Esc closes it, and Enter in a text field presses the primary button.
+ */
 export function Modal({ title, onClose, children, footer, wide }) {
+  const box = useRef(null);
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', onKey);
@@ -199,9 +218,30 @@ export function Modal({ title, onClose, children, footer, wide }) {
     document.body.style.overflow = 'hidden';
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
   }, [onClose]);
+  useEffect(() => {
+    const before = document.activeElement;
+    const root = box.current;
+    if (root && !root.contains(document.activeElement)) {
+      (root.querySelector('.modal-body input:not([type="hidden"]):not([disabled]), .modal-body textarea, .modal-body select') || root.querySelector('.modal-foot button') || root.querySelector('button'))?.focus();
+    }
+    return () => { if (before && before.focus) before.focus(); };
+  }, []);
+  const onKeyDown = (e) => {
+    if (e.key === 'Tab' && box.current) {
+      const items = [...box.current.querySelectorAll(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    } else if (e.key === 'Enter' && e.target.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'file', 'range'].includes(e.target.type)) {
+      const go = box.current?.querySelector('.modal-foot .btn.primary:not(:disabled)');
+      if (go) { e.preventDefault(); go.click(); }
+    }
+  };
   return (
     <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
+      <div ref={box} className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={title} onKeyDown={onKeyDown}>
         <div className="modal-head">
           <h2>{title}</h2>
           <IconButton icon="x" label="Close" size="sm" onClick={onClose} />

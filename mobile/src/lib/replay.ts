@@ -58,3 +58,43 @@ export function endDots(points: { lat: number; lon: number }[], id = 'r') {
     { id: `${id}-e`, lat: b.lat, lon: b.lon, color: '#FFFFFF', hollow: true },
   ];
 }
+
+/** Replay speeds. 1x = one minute of the ride per second; 10x = ten minutes per second. */
+export const SPEEDS = [1, 2, 3, 5, 10];
+/** Milliseconds the whole replay takes at 1x (never shorter than 6 s so short trips can still be followed). */
+export const baseDuration = (spanMs: number) => Math.max(6000, spanMs / 60);
+
+export type Stop = { lat: number; lon: number; start: number; end: number; durS: number };
+
+/**
+ * Places where the vehicle stood still in the middle of the route for `minS` seconds or more
+ * (slower than 5 km/h and within 60 m of where it stopped). The wait before the first point and
+ * after the last one is not a stop "in between", so it is left out.
+ */
+export function findStops(points: RoutePoint[], minS = 180): Stop[] {
+  const stops: Stop[] = [];
+  const n = points.length;
+  let i = 0;
+  while (i < n) {
+    let j = i;
+    while (j + 1 < n && (points[j + 1].speed ?? 0) < 5 && meters(points[i], points[j + 1]) < 60) j += 1;
+    const start = Date.parse(points[i].t);
+    const end = Date.parse(points[j].t);
+    if (i > 0 && j < n - 1 && (points[i].speed ?? 0) < 5 && (end - start) / 1000 >= minS) {
+      stops.push({ lat: points[i].lat, lon: points[i].lon, start, end, durS: Math.round((end - start) / 1000) });
+    }
+    i = j + 1;
+  }
+  return stops;
+}
+
+const clockOf = (ms: number) => new Date(ms).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+const waited = (s: number) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : `${Math.max(1, Math.round(s / 60))} min`);
+
+/** Map dots for the stops of one route; `now` (ms) keeps the stop the replay is at open. */
+export function stopDots(points: RoutePoint[], id: string, now: number | null, plate?: string | null) {
+  return findStops(points).map((s, i) => ({
+    id: `stop-${id}-${i}`, lat: s.lat, lon: s.lon, color: '#C27400',
+    stop: { title: `Stopped ${waited(s.durS)}`, sub: `${clockOf(s.start)} to ${clockOf(s.end)}`, plate: plate ?? undefined, active: now != null && now >= s.start && now <= s.end },
+  }));
+}

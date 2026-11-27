@@ -10,27 +10,73 @@
  *   /drivers                         drivers
  *   /profile, /contact, /partner     account and help
  *   /share/:token                    public live link (no login)
- *   /privacy, /terms                 legal pages (public)
+ *   /privacy, /terms, /cookies, /refunds   legal pages (public)
+ *   anything else                    404 page
  */
+import { lazy, Suspense, useEffect } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-router';
 import { useAuth } from './lib/auth';
 import { Spinner } from './components/ui';
 import { CustomerLayout } from './components/Layout';
 import Login from './pages/Login';
-import Register from './pages/Register';
-import Forgot from './pages/Forgot';
-import Dashboard from './pages/Dashboard';
-import Vehicles from './pages/Vehicles';
-import VehicleDetail from './pages/VehicleDetail';
-import MapPage from './pages/MapPage';
-import ReplayPage from './pages/Replay';
-import Alerts from './pages/Alerts';
-import Drivers from './pages/Drivers';
-import Profile from './pages/Profile';
-import Contact from './pages/Contact';
-import Partner from './pages/Partner';
-import Share from './pages/Share';
-import { Privacy, Terms } from './pages/Legal';
+const Register = lazy(() => import('./pages/Register'));
+const Forgot = lazy(() => import('./pages/Forgot'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Vehicles = lazy(() => import('./pages/Vehicles'));
+const VehicleDetail = lazy(() => import('./pages/VehicleDetail'));
+const MapPage = lazy(() => import('./pages/MapPage'));
+const ReplayPage = lazy(() => import('./pages/Replay'));
+const Alerts = lazy(() => import('./pages/Alerts'));
+const Drivers = lazy(() => import('./pages/Drivers'));
+const Profile = lazy(() => import('./pages/Profile'));
+const Contact = lazy(() => import('./pages/Contact'));
+const Partner = lazy(() => import('./pages/Partner'));
+const Share = lazy(() => import('./pages/Share'));
+const NotFound = lazy(() => import('./pages/NotFound'));
+const Privacy = lazy(() => import('./pages/Legal').then((m) => ({ default: m.Privacy })));
+const Cookies = lazy(() => import('./pages/Legal').then((m) => ({ default: m.Cookies })));
+const Terms = lazy(() => import('./pages/Legal').then((m) => ({ default: m.Terms })));
+const Refunds = lazy(() => import('./pages/Legal').then((m) => ({ default: m.Refunds })));
+
+// Browser tab title and search-engine description for each page.
+const DEFAULT_DESC = 'Pavakie Tracker: live location, replay, alerts and service records for your vehicles.';
+const PAGES = [
+  [/^\/login$/, 'Log in', 'Log in to Pavakie Tracker to see where your vehicles are.'],
+  [/^\/register$/, 'Create account', 'Create a Pavakie Tracker account and add your vehicle tracker.'],
+  [/^\/forgot$/, 'Reset password', 'Reset your Pavakie Tracker password with an emailed code.'],
+  [/^\/privacy$/, 'Privacy Policy', 'What Pavakie Tracker collects, why, who sees it and your choices.'],
+  [/^\/terms$/, 'Terms of Service', 'The terms for using Pavakie Tracker.'],
+  [/^\/cookies$/, 'Cookie Policy', 'What the Pavakie Tracker website stores in your browser.'],
+  [/^\/refunds$/, 'Refund Policy', 'Returns, cancellation, warranty and refunds for Pavakie trackers and plans.'],
+  [/^\/share\//, 'Live location', 'A shared live vehicle location from Pavakie Tracker.'],
+  [/^\/$/, 'Dashboard'],
+  [/^\/vehicles$/, 'Vehicles'],
+  [/^\/vehicles\/[^/]+\/replay$/, 'Vehicle replay'],
+  [/^\/vehicles\/[^/]+\/trips$/, 'Vehicle trips'],
+  [/^\/vehicles\/[^/]+\/report$/, 'Vehicle report'],
+  [/^\/vehicles\/[^/]+\/alerts$/, 'Vehicle alerts'],
+  [/^\/vehicles\/[^/]+\/geofences$/, 'Vehicle geofences'],
+  [/^\/vehicles\/[^/]+\/settings$/, 'Vehicle settings'],
+  [/^\/vehicles\//, 'Vehicle'],
+  [/^\/map$/, 'Live map'],
+  [/^\/replay$/, 'Replay'],
+  [/^\/alerts$/, 'Alerts'],
+  [/^\/drivers$/, 'Drivers'],
+  [/^\/profile$/, 'Profile and settings'],
+  [/^\/contact$/, 'Contact us'],
+  [/^\/partner$/, 'Partner with us'],
+];
+
+function TitleManager() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const hit = PAGES.find(([re]) => re.test(pathname));
+    document.title = hit ? `${hit[1]} | Pavakie` : 'Page not found | Pavakie';
+    const meta = document.querySelector('meta[name="description"]');
+    if (meta) meta.setAttribute('content', hit?.[2] || DEFAULT_DESC);
+  }, [pathname]);
+  return null;
+}
 
 function RequireUser() {
   const { user, ready } = useAuth();
@@ -48,6 +94,8 @@ function OldDevice() {
 
 export default function App() {
   return (
+    <Suspense fallback={<Spinner />}>
+    <TitleManager />
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
@@ -55,6 +103,8 @@ export default function App() {
       <Route path="/share/:token" element={<Share />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
+      <Route path="/cookies" element={<Cookies />} />
+      <Route path="/refunds" element={<Refunds />} />
 
       <Route element={<RequireUser />}>
         <Route element={<CustomerLayout />}>
@@ -73,7 +123,8 @@ export default function App() {
         </Route>
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<NotFound />} />
     </Routes>
+    </Suspense>
   );
 }

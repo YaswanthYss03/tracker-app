@@ -61,3 +61,38 @@ export function tripStats(list) {
     avg: driveS > 60 ? Math.min(top, Math.round(dist / (driveS / 3600))) : 0,
   };
 }
+
+/** Replay speeds. 1x = one minute of the ride per second; 10x = ten minutes per second. */
+export const SPEEDS = [1, 2, 3, 5, 10];
+/** Milliseconds the whole replay takes at 1x (never shorter than 6 s so short trips can still be followed). */
+export const baseDuration = (spanMs) => Math.max(6000, spanMs / 60);
+
+/**
+ * Places where the vehicle stood still in the middle of the route for `minS` seconds or more
+ * (slower than 5 km/h and within 60 m of where it stopped). The wait before the first point and
+ * after the last one is not a stop "in between", so it is left out.
+ */
+export function findStops(points, minS = 180) {
+  const stops = [];
+  const n = points.length;
+  let i = 0;
+  while (i < n) {
+    let j = i;
+    while (j + 1 < n && (points[j + 1].speed ?? 0) < 5 && meters(points[i], points[j + 1]) < 60) j += 1;
+    const start = Date.parse(points[i].t);
+    const end = Date.parse(points[j].t);
+    if (i > 0 && j < n - 1 && (points[i].speed ?? 0) < 5 && (end - start) / 1000 >= minS) {
+      stops.push({ lat: points[i].lat, lon: points[i].lon, start, end, durS: Math.round((end - start) / 1000) });
+    }
+    i = j + 1;
+  }
+  return stops;
+}
+
+const clockOf = (ms) => new Date(ms).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+const waited = (s) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : `${Math.max(1, Math.round(s / 60))} min`);
+/** Text of the pop-up on a stop (HTML; only numbers and a plate, no free text). */
+export function stopTip(s, plate) {
+  const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  return `${plate ? `<b>${esc(plate)}</b><br>` : ''}<b>Stopped ${waited(s.durS)}</b><br>${clockOf(s.start)} to ${clockOf(s.end)}`;
+}

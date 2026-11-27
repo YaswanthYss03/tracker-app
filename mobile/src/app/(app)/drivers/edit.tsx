@@ -90,6 +90,10 @@ export default function DriverEditor() {
     const iso = dmyToIso(expiry);
     if (iso === 'invalid') errs.expiry = 'Use DD/MM/YYYY';
     if (licence.trim() && licence.trim().length < 4) errs.licence = 'Too short';
+    // No two drivers can share a licence number (spaces, hyphens and case do not count).
+    const key = (v: string) => v.toUpperCase().replace(/[\s-]/g, '');
+    const twin = licence.trim() ? drivers?.find((d) => d.id !== existing?.id && d.licenceNo && key(d.licenceNo) === key(licence)) : undefined;
+    if (!errs.licence && twin) errs.licence = `${twin.name} already has this licence number`;
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
@@ -155,7 +159,7 @@ export default function DriverEditor() {
             <Text style={[type.small, { color: c.text, fontFamily: type.fieldLabel.fontFamily }]}>{hasPhoto ? 'Change photo' : 'Add photo · camera or files'}</Text>
           </Pressable>
 
-          <Input label="Full name" value={name} onChangeText={setName} placeholder="e.g. Arun Kumar" autoCapitalize="words" maxLength={60} error={errors.name} />
+          <Input label="Full name" value={name} onChangeText={setName} placeholder="Driver's full name" autoCapitalize="words" maxLength={60} error={errors.name} />
           <Input label="Phone" value={phone} onChangeText={setPhone} placeholder="+91 90000 00000" keyboardType="phone-pad" maxLength={20} error={errors.phone} />
           <View style={{ flexDirection: 'row', gap: space.md }}>
             <View style={{ flex: 1.4 }}>

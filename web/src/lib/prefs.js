@@ -1,11 +1,11 @@
-// Small preferences kept in this browser: theme and "plates on map".
+// Small preferences kept in this browser: theme, "plates on map", vehicle list view and which tours were seen.
 import { useSyncExternalStore } from 'react';
 
 const listeners = new Set();
 const read = (k, d) => {
   try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; }
 };
-const state = { theme: read('pk.theme', 'system'), platesOnMap: read('pk.platesOnMap', true), vehiclesView: read('pk.vehiclesView', 'table') };
+const state = { theme: read('pk.theme', 'system'), platesOnMap: read('pk.platesOnMap', true), vehiclesView: read('pk.vehiclesView', 'table'), tourSeen: read('pk.tourSeen', {}) };
 
 function apply() {
   const el = document.documentElement;

@@ -1,7 +1,8 @@
 // One trip: route with playback, from → to (addresses and times), distance,
 // duration, average and top speed, a speed chart and the driver.
-import { useState } from 'react';
-import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Linking, StyleSheet, Text, View } from 'react-native';
+import { LockableScrollView } from '@/components/LockableScrollView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -13,8 +14,8 @@ import { AppMap } from '@/components/Map';
 import { ExpandableMap } from '@/components/ExpandableMap';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import { Card, Plate, RoundButton, Stat, TopBar } from '@/components/kit';
-import { ReplayTotals, Scrubber, SpeedChart, usePlayback } from '@/components/tripParts';
-import { ROUTE_RED, endDots } from '@/lib/replay';
+import { ReplayTotals, Scrubber, SpeedChart, usePlayback, useReplaySpeed } from '@/components/tripParts';
+import { ROUTE_RED, endDots, stopDots } from '@/lib/replay';
 import { fonts } from '@/theme';
 import { useResponsive } from '@/lib/responsive';
 import { ErrorBox, Loading } from '@/components/ui';
@@ -43,12 +44,15 @@ export default function TripScreen() {
   const trip = q.data?.data.trip;
   const points = q.data?.data.points ?? [];
   const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = usePlayback(playing, setPlaying, 10_000);
+  const span = useRef(0);
+  const [speed, setSpeed] = useReplaySpeed();
+  const [progress, setProgress] = usePlayback(playing, setPlaying, span, speed);
 
   const first = points[0];
   const last = points[points.length - 1];
   const t0 = first ? Date.parse(first.t) : 0;
   const t1 = last ? Date.parse(last.t) : 1;
+  span.current = t1 - t0;
   const tNow = t0 + progress * (t1 - t0);
   const idx = points.length ? Math.max(0, points.findIndex((p) => Date.parse(p.t) > tNow) - 1) : 0;
   const at = progress >= 1 ? last : points[idx === -1 ? points.length - 1 : idx];
@@ -84,13 +88,13 @@ export default function TripScreen() {
           </View>
         }
       />
-      <ScrollView contentContainerStyle={{ padding: space.lg, paddingTop: space.xs, gap: space.lg, paddingBottom: 48 }}>
+      <LockableScrollView contentContainerStyle={{ padding: space.lg, paddingTop: space.xs, gap: space.lg, paddingBottom: 48 }}>
         <ExpandableMap height={230}>
           <AppMap
             initialCenter={coords[0]}
             initialZoom={13}
             routes={coords.length > 1 ? [{ id: 'trip', color: ROUTE_RED, points: coords }] : []}
-            dots={endDots(coords, 'trip')}
+            dots={[...endDots(coords, 'trip'), ...stopDots(points, 'trip', progress > 0 && progress < 1 ? tNow : null)]}
             markers={at ? [{ id: 'now', lat: at.lat, lon: at.lon, dot: ROUTE_RED, variant: 'replay' }] : []}
             fitTo={coords}
             fitKey={`${id}-${coords.length}`}
@@ -103,6 +107,8 @@ export default function TripScreen() {
           onPlay={() => setPlaying(!playing)}
           disabled={points.length < 2}
           label={progress > 0 && progress < 1 && at ? timeOnly(at.t) : undefined}
+          speed={speed}
+          onSpeed={setSpeed}
         />
 
         {!hasData && (
@@ -153,7 +159,7 @@ export default function TripScreen() {
             )}
           </Card>
         )}
-      </ScrollView>
+      </LockableScrollView>
     </SafeAreaView>
   );
 }

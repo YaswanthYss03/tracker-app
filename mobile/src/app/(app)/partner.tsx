@@ -1,6 +1,7 @@
 // Partner with us: dealers, installers, fleet owners and resellers send their details.
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { API_URL } from '@/config';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api, errorText } from '@/api/client';
@@ -19,10 +20,10 @@ const TYPES: [PartnerType, string, keyof typeof Ionicons.glyphMap][] = [
   ['other', 'Other', 'ellipsis-horizontal'],
 ];
 const BENEFITS: [keyof typeof Ionicons.glyphMap, string][] = [
-  ['cash-outline', 'Dealer pricing and margins on every tracker'],
-  ['people-outline', 'Leads from customers in your city'],
-  ['speedometer-outline', 'Fleet dashboard and bulk activation'],
-  ['headset-outline', 'Priority support and installation training'],
+  ['cash-outline', 'Ask us about dealer pricing for your region'],
+  ['people-outline', 'Share a vehicle with your customer or driver, with their consent'],
+  ['speedometer-outline', 'One dashboard for every vehicle you manage'],
+  ['headset-outline', 'Talk to us about support and installation'],
 ];
 
 export default function Partner() {
@@ -99,6 +100,7 @@ export default function Partner() {
           <Field label="City" value={form.city} onChangeText={set('city')} />
           <Field label="Anything else? (optional)" value={form.message} onChangeText={set('message')} multiline numberOfLines={4} style={{ minHeight: 90, textAlignVertical: 'top' }} hint="e.g. how many vehicles or trackers per month" />
           <ErrorBox error={error} />
+          <AppText variant="caption" color="textMuted">We use these details only to get back to you. See our <Text onPress={() => Linking.openURL(`${API_URL}/privacy`)} accessibilityRole="link" style={{ textDecorationLine: 'underline' }}>Privacy Policy</Text>.</AppText>
           <Button
             title="Send request"
             loading={busy}

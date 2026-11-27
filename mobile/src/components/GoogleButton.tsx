@@ -6,7 +6,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useAuth } from '@/auth/AuthProvider';
 import { errorText } from '@/api/client';
-import { getGoogleIdToken, IN_EXPO_GO } from '@/auth/google';
+import { getGoogleIdToken } from '@/auth/google';
 import { GOOGLE_WEB_CLIENT_ID } from '@/config';
 import { useAppConfig } from '@/lib/appConfig';
 import { AppText, ErrorBox } from './ui';
@@ -57,9 +57,6 @@ export function GoogleButton({ signUp }: { signUp?: boolean }) {
         {busy ? <ActivityIndicator color="#3C4043" /> : <GoogleG />}
         <AppText variant="bodyStrong" color="#3C4043">{signUp ? 'Sign up with Google' : 'Continue with Google'}</AppText>
       </Pressable>
-      {IN_EXPO_GO && (
-        <AppText variant="caption" color="textMuted" center>Google sign-in works in the installed app (APK), not in Expo Go.</AppText>
-      )}
       {signUp && (
         <AppText variant="caption" color="textMuted" center>
           By continuing with Google you agree to the Terms of Service and Privacy Policy.

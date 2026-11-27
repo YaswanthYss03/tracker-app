@@ -1,6 +1,6 @@
 // "Enter the code we emailed you" step, shown after sign-up (or when logging
 // in to an account whose email isn't confirmed yet).
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { Button, ErrorBox, Input } from './ui';
 
@@ -9,6 +9,13 @@ export default function VerifyEmail({ email, onVerified, onBack }) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
+  const [wait, setWait] = useState(30); // seconds until a new code can be requested
+
+  useEffect(() => {
+    if (wait <= 0) return;
+    const t = setTimeout(() => setWait(wait - 1), 1000);
+    return () => clearTimeout(t);
+  }, [wait]);
 
   async function submit(e) {
     e.preventDefault();
@@ -28,6 +35,7 @@ export default function VerifyEmail({ email, onVerified, onBack }) {
     try {
       await api('/auth/resend-verification', { method: 'POST', body: { email }, auth: false });
       setSent(true);
+      setWait(30);
     } catch (err) {
       setError(err);
     }
@@ -55,8 +63,8 @@ export default function VerifyEmail({ email, onVerified, onBack }) {
         <Button type="submit" variant="primary" size="lg" block loading={busy} disabled={code.length !== 6}>{busy ? 'Checking...' : 'Verify and continue'}</Button>
       </form>
       <p className="muted small center">
-        {sent ? 'A new code is on its way. ' : "Didn't get it? Check spam, or "}
-        {!sent && <button type="button" className="link" onClick={resend}>send a new code</button>}
+        {sent && wait > 0 ? 'A new code is on its way. ' : "Didn't get it? Check spam, or "}
+        {wait > 0 ? <span>send a new code in {wait}s</span> : <button type="button" className="link" onClick={resend}>send a new code</button>}
         {onBack && <> or <button type="button" className="link" onClick={onBack}>use a different email</button></>}
       </p>
     </>

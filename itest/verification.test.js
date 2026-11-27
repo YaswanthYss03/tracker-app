@@ -82,3 +82,18 @@ test('signing up again before verifying updates the password and sends a new cod
   const now = await api('POST', '/api/v1/auth/login', { body: { email: 'c@x.com', password: 'second password 2' } });
   assert.equal(now.status, 200);
 });
+
+test('if the code email cannot be sent, sign-up says so', async () => {
+  const send = ctx.mailer.send;
+  ctx.mailer.send = async () => { throw new Error('provider down'); };
+  try {
+    const res = await register('d@x.com');
+    assert.equal(res.status, 502);
+    assert.equal(res.body.error.code, 'EMAIL_FAILED');
+  } finally {
+    ctx.mailer.send = send;
+  }
+  // Trying again once email works sends the code.
+  assert.equal((await register('d@x.com')).status, 201);
+  assert.equal(ctx.emails.length, 1);
+});

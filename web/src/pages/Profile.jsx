@@ -8,6 +8,7 @@ import { initials } from '../lib/format';
 import { setPref, usePref } from '../lib/prefs';
 import { useToast } from '../lib/toast';
 import Icon from '../components/Icon';
+import { replayTour } from '../components/Tour';
 import { Button, Card, Confirm, ErrorBox, Input, PageHead, Seg, Setting, Switch } from '../components/ui';
 
 export default function Profile() {
@@ -65,7 +66,7 @@ export default function Profile() {
           ))}
         </div>
 
-        <div className="grid c2 start">
+        <div className="masonry">
           <Card title="Your details">
             <form className="stack" onSubmit={saveProfile}>
               <div className="row" style={{ gap: 14 }}>
@@ -106,15 +107,16 @@ export default function Profile() {
               <Setting title="Log out everywhere" desc="Sign out on every phone and browser, including this one"><Button size="sm" onClick={() => setConfirmAll(true)}>Log out all</Button></Setting>
             </div>
           </Card>
-        </div>
 
-        <div className="grid c2 start">
           <Card title="Help">
             <div>
               <Link to="/contact" className="item click"><span className="ico"><Icon name="help" size={16} /></span><div className="body"><div className="t">Contact us</div><div className="d">Questions about your tracker, billing or the app</div></div><Icon name="chevR" size={16} /></Link>
               <Link to="/partner" className="item click"><span className="ico"><Icon name="building" size={16} /></span><div className="body"><div className="t">Partner with us</div><div className="d">Dealers, installers, fleet owners and resellers</div></div><Icon name="chevR" size={16} /></Link>
+              <button type="button" className="item click" onClick={replayTour}><span className="ico"><Icon name="navigate" size={16} /></span><div className="body"><div className="t">Take the app tour</div><div className="d">A quick walk through the main features</div></div><Icon name="chevR" size={16} /></button>
               <a href="/privacy" className="item click" target="_blank" rel="noreferrer"><span className="ico"><Icon name="shield" size={16} /></span><div className="body"><div className="t">Privacy policy</div></div><Icon name="external" size={16} /></a>
               <a href="/terms" className="item click" target="_blank" rel="noreferrer"><span className="ico"><Icon name="info" size={16} /></span><div className="body"><div className="t">Terms of service</div></div><Icon name="external" size={16} /></a>
+              <a href="/cookies" className="item click" target="_blank" rel="noreferrer"><span className="ico"><Icon name="shield" size={16} /></span><div className="body"><div className="t">Cookie policy</div></div><Icon name="external" size={16} /></a>
+              <a href="/refunds" className="item click" target="_blank" rel="noreferrer"><span className="ico"><Icon name="info" size={16} /></span><div className="body"><div className="t">Refund policy</div></div><Icon name="external" size={16} /></a>
             </div>
           </Card>
           <Card title="Delete account">

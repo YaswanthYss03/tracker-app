@@ -7,10 +7,10 @@ import { Button, Card, ErrorBox, Input, Notice, PageHead, Textarea } from '../co
 
 const TYPES = [['dealer', 'Dealer'], ['installer', 'Installer'], ['fleet', 'Fleet owner'], ['reseller', 'Reseller'], ['other', 'Other']];
 const BENEFITS = [
-  ['card', 'Dealer pricing and margins on every tracker'],
-  ['users', 'Leads from customers in your city'],
-  ['dashboard', 'Fleet dashboard and bulk activation'],
-  ['help', 'Priority support and installation training'],
+  ['card', 'Ask us about dealer pricing for your region'],
+  ['users', 'Share a vehicle with your customer or driver, with their consent'],
+  ['dashboard', 'One dashboard for every vehicle you manage'],
+  ['help', 'Talk to us about support and installation'],
 ];
 
 export default function Partner() {
@@ -50,6 +50,7 @@ export default function Partner() {
               </div>
               <Textarea label="Message" value={form.message} onChange={set('message')} maxLength={2000} rows={4} />
               <ErrorBox error={error} />
+              <p className="tiny muted">We use these details only to get back to you. See our <a href="/privacy" target="_blank" rel="noreferrer" className="link">Privacy Policy</a>.</p>
               <div className="row" style={{ justifyContent: 'flex-end' }}><Button type="submit" variant="primary" icon="send" loading={busy} disabled={!type}>Send</Button></div>
             </form>
           )}

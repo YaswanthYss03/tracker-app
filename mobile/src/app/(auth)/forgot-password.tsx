@@ -2,7 +2,8 @@
 import { useState } from 'react';
 import { router } from 'expo-router';
 import { api, errorText } from '@/api/client';
-import { AppText, Button, ErrorBox, Field, Screen } from '@/components/ui';
+import { AppText, Button, ErrorBox, Field } from '@/components/ui';
+import { AuthScreen } from '@/components/AuthBackdrop';
 
 export default function ForgotPassword() {
   const [step, setStep] = useState<'email' | 'code' | 'done'>('email');
@@ -26,16 +27,16 @@ export default function ForgotPassword() {
 
   if (step === 'done') {
     return (
-      <Screen>
+      <AuthScreen>
         <AppText variant="h1">Password changed</AppText>
         <AppText color="textMuted">You can now log in with your new password.</AppText>
         <Button title="Log in" onPress={() => router.replace('/login')} />
-      </Screen>
+      </AuthScreen>
     );
   }
 
   return (
-    <Screen>
+    <AuthScreen>
       <AppText variant="h1">Reset password</AppText>
       {step === 'email' ? (
         <>
@@ -70,6 +71,6 @@ export default function ForgotPassword() {
           <Button title="Send a new code" variant="ghost" onPress={() => setStep('email')} />
         </>
       )}
-    </Screen>
+    </AuthScreen>
   );
 }

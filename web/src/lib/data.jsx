@@ -50,7 +50,7 @@ export function useFleet() {
 export function useDevice(id) {
   const { devices, stateOf } = useFleet();
   const fromList = devices.find((d) => d.id === id);
-  const q = useQuery({ queryKey: ['device', id], queryFn: () => api(`/devices/${id}`), select: (r) => r.data });
+  const q = useQuery({ queryKey: ['device', id], queryFn: () => api(`/devices/${id}`), select: (r) => r.data, staleTime: 60_000 });
   const device = q.data || fromList;
   return { device, state: device ? stateOf(fromList || device) : null, isLoading: q.isLoading && !fromList, error: q.error, refetch: q.refetch };
 }
@@ -115,4 +115,9 @@ export function useUnreadAlerts() {
   const feed = useAlertsFeed();
   const since = useSeenAt() || Date.now() - 86_400_000;
   return (feed.data || []).filter((e) => new Date(e.time).getTime() > since).length;
+}
+
+/** Public settings from the server: support contacts, app versions, Google sign-in id. */
+export function useAppConfig() {
+  return useQuery({ queryKey: ['app-config'], queryFn: () => api('/app/config', { auth: false }), select: (r) => r.data, staleTime: 3_600_000 }).data || null;
 }

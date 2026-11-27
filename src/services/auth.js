@@ -104,11 +104,12 @@ function createAuthService({
       user = await prisma.user.update({ where: { id: existing.id }, data });
     }
     if (!requireEmailVerification) return { user: publicUser(user), ...(await issueTokens(user)) };
-    await sendVerificationCode(user);
+    await sendVerificationCode(user, { strict: true });
     return { verificationRequired: true, email: user.email };
   }
 
-  async function sendVerificationCode(user) {
+  // strict: tell the person when the email could not be sent, instead of leaving them waiting for a code.
+  async function sendVerificationCode(user, { strict = false } = {}) {
     const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
     await prisma.emailVerification.updateMany({ where: { userId: user.id, usedAt: null }, data: { usedAt: new Date() } });
     await prisma.emailVerification.create({
@@ -118,6 +119,7 @@ function createAuthService({
       await mailer?.send({ to: user.email, ...verifyEmail(code) });
     } catch (err) {
       logger?.error({ err: err.message }, 'failed to send verification email');
+      if (strict) throw new AppError(502, 'EMAIL_FAILED', 'We could not send the code. Check the email address and try again.');
     }
   }
 

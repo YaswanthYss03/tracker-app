@@ -7,8 +7,8 @@ import { useQueries } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useFleet } from '../lib/data';
 import { dmy, duration, isoDay, km, plateOrName, plateTail, shortPlate, timeOnly } from '../lib/format';
-import { usePlayback } from '../lib/playback';
-import { ROUTE_COLORS, ROUTE_RED, hhmm, pointAt, tripStats, validTime } from '../lib/replay';
+import { usePlayback, useReplaySpeed } from '../lib/playback';
+import { ROUTE_COLORS, ROUTE_RED, baseDuration, findStops, hhmm, pointAt, stopTip, tripStats, validTime } from '../lib/replay';
 import { STATUS_RING, statusGroup } from '../lib/status';
 import { ReplayTotals, SpeedChart } from '../components/Charts';
 import Icon from '../components/Icon';
@@ -40,7 +40,7 @@ export function ReplayView({ lockedId }) {
   const [fromText, setFrom] = useState('00:00');
   const [toText, setTo] = useState(qDate && qDate < today ? '23:59' : hhmm());
   const [open, setOpen] = useState(null); // trip shown in the side panel
-  const pb = usePlayback(12_000);
+  const [speed, setSpeed] = useReplaySpeed();
 
   useEffect(() => { if (!lockedId && !selected.length && sorted.length) setSelected([sorted[0].id]); }, [lockedId, sorted, selected.length]);
   useEffect(() => { if (lockedId) setSelected([lockedId]); }, [lockedId]);
@@ -72,6 +72,7 @@ export function ReplayView({ lockedId }) {
   const times = pointsBy.flatMap((r) => (r.points.length ? [Date.parse(r.points[0].t), Date.parse(r.points[r.points.length - 1].t)] : []));
   const t0 = times.length ? Math.min(...times) : winStart;
   const t1 = times.length ? Math.max(...times) : winEnd;
+  const pb = usePlayback(baseDuration(t1 - t0), speed);
   const tNow = t0 + pb.progress * (t1 - t0);
   const hasRoute = pointsBy.some((r) => r.points.length > 1);
   useEffect(() => { pb.reset(); }, [date, from, to, selected.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -82,6 +83,11 @@ export function ReplayView({ lockedId }) {
     const d = byId.get(r.id);
     return p && d ? [{ id: r.id, kind: 'replay', lat: p.lat, lon: p.lon, fill: compare ? r.color : ROUTE_RED, label: compare ? plateTail(d) : undefined }] : [];
   });
+  // Where each vehicle stood still along the way; the one the replay is at right now stays open.
+  const stopMarkers = pointsBy.flatMap((r) => findStops(r.points).map((s, i) => {
+    const active = pb.progress < 1 && tNow >= s.start && tNow <= s.end;
+    return { id: `stop-${r.id}-${i}`, kind: 'stop', lat: s.lat, lon: s.lon, active, tip: stopTip(s, compare ? plateOrName(byId.get(r.id)) : null) };
+  }));
   const fit = pointsBy.flatMap((r) => r.points.map((p) => ({ lat: p.lat, lon: p.lon })));
   const routes = pointsBy.filter((r) => r.points.length > 1).map((r) => ({ id: r.id, color: compare ? r.color : ROUTE_RED, points: r.points.map((p) => ({ lat: p.lat, lon: p.lon })) }));
   const dots = windowTrips.slice(0, 40).flatMap((t) => [{ id: `${t.id}s`, lat: t.start.lat, lon: t.start.lon }, ...(t.end ? [{ id: `${t.id}e`, lat: t.end.lat, lon: t.end.lon }] : [])]);
@@ -121,9 +127,9 @@ export function ReplayView({ lockedId }) {
 
       <div className="grid main-side">
         <div className="stack">
-          <MapView height={460} expandable routes={routes} dots={dots} markers={markers} fitTo={fit} fitKey={`${selected.join(',')}-${winStart}-${winEnd}-${fit.length > 0}`} note={!loading && !hasRoute ? 'No driving in this time window' : undefined} />
+          <MapView height={460} expandable routes={routes} dots={dots} markers={[...stopMarkers, ...markers]} fitTo={fit} fitKey={`${selected.join(',')}-${winStart}-${winEnd}-${fit.length > 0}`} note={!loading && !hasRoute ? 'No driving in this time window' : undefined} />
           <Card>
-            <ReplayBar progress={pb.progress} playing={pb.playing} onToggle={pb.toggle} onSeek={pb.seek} disabled={!hasRoute} label={hasRoute ? clock : undefined} />
+            <ReplayBar progress={pb.progress} playing={pb.playing} onToggle={pb.toggle} onSeek={pb.seek} disabled={!hasRoute} label={hasRoute ? clock : undefined} speed={speed} onSpeed={setSpeed} />
           </Card>
           {hasRoute && (
             <Card title="Speed" action={<span className="muted small">Click the chart to jump there</span>}>
@@ -152,7 +158,7 @@ export function ReplayView({ lockedId }) {
                   return (
                     <button key={d} type="button" className={`day ${on ? 'on' : ''}`} onClick={() => pickDay(d)} aria-pressed={on} aria-label={`${dmy(d)}, ${km(perDay[i])} km`}>
                       <span className="km" style={{ opacity: on ? 1 : 0 }}>{Math.round(perDay[i])} km</span>
-                      <span className="b" style={{ height: 28 + (perDay[i] / maxDay) * 36 }} />
+                      <span className="b" style={{ height: perDay[i] > 0 ? 12 + (perDay[i] / maxDay) * 52 : 4 }} />
                       <span className="n">{d === today ? 'Today' : new Date(`${d}T12:00:00`).toLocaleDateString('en-IN', { weekday: 'short' })}</span>
                     </button>
                   );

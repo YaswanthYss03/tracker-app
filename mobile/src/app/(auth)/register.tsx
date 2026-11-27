@@ -5,7 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/auth/AuthProvider';
 import { errorText } from '@/api/client';
 import { API_URL } from '@/config';
-import { AppText, Button, ErrorBox, Field, Row, Screen } from '@/components/ui';
+import { AppText, Button, ErrorBox, Field, Row } from '@/components/ui';
+import { AuthScreen } from '@/components/AuthBackdrop';
 import { GoogleButton } from '@/components/GoogleButton';
 import { useColors } from '@/theme';
 
@@ -35,13 +36,13 @@ export default function Register() {
   }
 
   return (
-    <Screen>
+    <AuthScreen>
       <AppText variant="h1">Create account</AppText>
       <AppText color="textMuted">Add your tracker right after signing up.</AppText>
       <GoogleButton signUp />
-      <Field label="Name" value={form.name} onChangeText={set('name')} autoComplete="name" />
-      <Field label="Email" value={form.email} onChangeText={set('email')} autoCapitalize="none" keyboardType="email-address" autoComplete="email" />
-      <Field label="Password" value={form.password} onChangeText={set('password')} secureTextEntry autoComplete="new-password" hint="At least 8 characters" />
+      <Field label="Name" value={form.name} onChangeText={set('name')} autoComplete="name" returnKeyType="next" />
+      <Field label="Email" value={form.email} onChangeText={set('email')} autoCapitalize="none" keyboardType="email-address" autoComplete="email" returnKeyType="next" />
+      <Field label="Password" value={form.password} onChangeText={set('password')} secureTextEntry autoComplete="new-password" hint="At least 8 characters" returnKeyType="done" onSubmitEditing={submit} />
       <Pressable onPress={() => setAccepted(!accepted)} accessibilityRole="checkbox" accessibilityState={{ checked: accepted }}>
         <Row style={{ alignItems: 'flex-start', flexWrap: 'nowrap' }}>
           <Ionicons name={accepted ? 'checkbox' : 'square-outline'} size={26} color={accepted ? c.text : c.textMuted} />
@@ -65,6 +66,6 @@ export default function Register() {
       <AppText color="textMuted" center>
         Already have an account? <Link href="/login"><AppText variant="bodyStrong">Log in</AppText></Link>
       </AppText>
-    </Screen>
+    </AuthScreen>
   );
 }

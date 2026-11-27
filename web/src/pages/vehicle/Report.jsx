@@ -47,7 +47,7 @@ export default function Report({ device }) {
               ))}
             </div>
           </Card>
-          <div className="grid c2">
+          <div className="stack">
             <Card title="Distance per day" action={<span className="muted small">km</span>}>
               <BarChart items={items((x) => x.distanceKm, (v) => (v ? String(Math.round(v)) : ''))} scroll={range === '30'} />
             </Card>

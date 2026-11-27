@@ -50,6 +50,8 @@ export const DESIGN_ICONS = {
   moon: 'M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z',
   tag: 'M3 5h18v14H3zM7 12h10',
   shrink: 'M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7',
+  // Two curved arrows chasing each other round a circle: a half turn swaps their places (U-turn).
+  uturn: 'M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M3 21v-5h5',
   swapV: 'M7 3v18M4 6l3-3 3 3M17 21V3M14 18l3 3 3-3',
   folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
   play: 'M7 4.5v15a1 1 0 0 0 1.5.9l12-7.5a1 1 0 0 0 0-1.8l-12-7.5A1 1 0 0 0 7 4.5z',

@@ -50,7 +50,7 @@ export default function Settings({ device, isOwner }) {
   }
 
   return (
-    <div className="stack" style={{ maxWidth: 760 }}>
+    <div className="stack">
       <Card>
         {isOwner && (
           <>

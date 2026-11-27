@@ -1,5 +1,5 @@
 // Brand UI building blocks. Every screen uses these instead of raw RN styles.
-import { type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -181,20 +181,38 @@ export function IconButton({ icon, onPress, label, color }: { icon: keyof typeof
 
 export function Field({ label, error, hint, ...props }: TextInputProps & { label: string; error?: string; hint?: string }) {
   const c = useColors();
+  // A password field gets an eye to show or hide what was typed.
+  const isPassword = !!props.secureTextEntry;
+  const [shown, setShown] = useState(false);
   return (
     <View style={{ gap: 6 }}>
       <AppText variant="caption" color="textMuted">{label.toUpperCase()}</AppText>
-      <TextInput
-        placeholderTextColor={c.textMuted}
-        maxFontSizeMultiplier={1.3}
-        {...props}
-        style={[
-          type.body,
-          styles.input,
-          { color: c.text, backgroundColor: c.surface, borderColor: error ? c.danger : c.border },
-          props.style,
-        ]}
-      />
+      <View>
+        <TextInput
+          placeholderTextColor={c.textMuted}
+          maxFontSizeMultiplier={1.3}
+          {...props}
+          secureTextEntry={isPassword && !shown}
+          style={[
+            type.body,
+            styles.input,
+            { color: c.text, backgroundColor: c.surface, borderColor: error ? c.danger : c.border },
+            isPassword && { paddingRight: 52 },
+            props.style,
+          ]}
+        />
+        {isPassword ? (
+          <Pressable
+            onPress={() => setShown((v) => !v)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={shown ? 'Hide password' : 'Show password'}
+            style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 48, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Ionicons name={shown ? 'eye-off-outline' : 'eye-outline'} size={22} color={c.textMuted} />
+          </Pressable>
+        ) : null}
+      </View>
       {error ? <AppText variant="small" color="danger">{error}</AppText> : hint ? <AppText variant="small" color="textMuted">{hint}</AppText> : null}
     </View>
   );

@@ -1,6 +1,7 @@
 // Geofences: circles on the map; owners long-press to place a new one.
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { LockableScrollView } from '@/components/LockableScrollView';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { api, errorText } from '@/api/client';
@@ -53,7 +54,7 @@ export function GeofencesTab({ device, state, isOwner }: TabProps) {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 8, gap: 14, paddingBottom: 24 }}>
+    <LockableScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 8, gap: 14, paddingBottom: 24 }}>
       <ExpandableMap height={190}>
         <AppMap
           initialCenter={hasPos ? { lat: state.lat!, lon: state.lon! } : undefined}
@@ -135,7 +136,7 @@ export function GeofencesTab({ device, state, isOwner }: TabProps) {
         }}
         onClose={() => setDeleting(null)}
       />
-    </ScrollView>
+    </LockableScrollView>
   );
 }
 

@@ -1,8 +1,9 @@
 // Trips: pick a vehicle (or several with Compare), a day and a time window.
 // Week bars show km per day; the map replays the route(s) for the window;
 // totals (or a comparison table) and the trips list sit underneath.
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { LockableScrollView } from '@/components/LockableScrollView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,11 +14,11 @@ import { plateOrName, type Device, type RoutePoint, type Trip } from '@/api/type
 import { useTrackers } from '@/live/TrackersProvider';
 import { duration, km, timeOnly } from '@/lib/format';
 import { dmyToIso, isoToDmy } from '@/lib/drivers';
-import { hhmm, pointAt, validTime } from '@/lib/replay';
+import { hhmm, pointAt, stopDots, validTime } from '@/lib/replay';
 import { ReplayFields } from '@/components/ReplayFields';
 import { AppMap, type LatLon, type MapMarker, type MapRoute } from '@/components/Map';
 import { Card, Plate } from '@/components/kit';
-import { ReplayTotals, Scrubber, SpeedChart, usePlayback } from '@/components/tripParts';
+import { ReplayTotals, Scrubber, SpeedChart, usePlayback, useReplaySpeed } from '@/components/tripParts';
 import { EmptyState, Loading } from '@/components/ui';
 import { fonts, radius, shadow, space, type, useColors } from '@/theme';
 import { useHomeColors } from '@/theme/designHome';
@@ -63,7 +64,9 @@ export default function Trips() {
   const [toText, setToText] = useState(hhmm());
   const [big, setBig] = useState(false);
   const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = usePlayback(playing, setPlaying);
+  const span = useRef(0);
+  const [speed, setSpeed] = useReplaySpeed();
+  const [progress, setProgress] = usePlayback(playing, setPlaying, span, speed);
 
   // Start with the first vehicle.
   useEffect(() => {
@@ -111,6 +114,7 @@ export default function Trips() {
   const times = pointsBy.flatMap((r) => (r.points.length ? [Date.parse(r.points[0].t), Date.parse(r.points[r.points.length - 1].t)] : []));
   const t0 = times.length ? Math.min(...times) : winStart;
   const t1 = times.length ? Math.max(...times) : winEnd;
+  span.current = t1 - t0;
   const tNow = t0 + progress * (t1 - t0);
   const hasRoute = pointsBy.some((r) => r.points.length > 1);
 
@@ -127,6 +131,8 @@ export default function Trips() {
     return p && d ? [{ id: r.id, lat: p.lat, lon: p.lon, dot: compare ? r.color : ROUTE_COLORS[0], variant: 'replay' as const, label: compare ? plateTail(d.registrationNumber, d.name) : undefined }] : [];
   });
   const fit: LatLon[] = pointsBy.flatMap((r) => r.points.map((p) => ({ lat: p.lat, lon: p.lon })));
+  // Where each vehicle stood still along the way (tap one for the details); the one the replay is at stays open.
+  const stopMarks = pointsBy.flatMap((r) => stopDots(r.points, r.id, progress > 0 && progress < 1 ? tNow : null, compare && byId.get(r.id) ? plateOrName(byId.get(r.id) as Device) : null));
   const mapRoutes: MapRoute[] = pointsBy.map((r) => ({ id: r.id, color: compare ? r.color : ROUTE_COLORS[0], points: r.points }));
   // White dots where each trip started and ended.
   const tripDots = windowTrips.slice(0, 40).flatMap((tr) => [
@@ -193,7 +199,7 @@ export default function Trips() {
           <Text style={{ fontFamily: fonts.bold, fontSize: 15, color: compare ? '#FFFFFF' : c.text }}>Compare</Text>
         </Pressable>
       </View>
-      <ScrollView
+      <LockableScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, gap: 16, paddingBottom: 40 }}
         refreshControl={<RefreshControl refreshing={false} onRefresh={() => { trips.forEach((q) => q.refetch()); routes.forEach((q) => q.refetch()); }} />}
         keyboardShouldPersistTaps="handled"
@@ -230,7 +236,7 @@ export default function Trips() {
               <Pressable key={d} onPress={() => pickDay(d)} style={styles.dayCol} accessibilityRole="button" accessibilityLabel={`${d}: ${km(perDay[i])} km`} accessibilityState={{ selected: on }}>
                 <Text style={{ fontFamily: fonts.bold, fontSize: 12, color: c.text, opacity: on ? 1 : 0 }}>{Math.round(perDay[i])} km</Text>
                 <View style={styles.barBox}>
-                  <View style={[styles.bar, { height: 26 + (perDay[i] / maxDay) * 14, backgroundColor: on ? c.accent : hc.dark ? c.surface2 : '#E2E2E2' }]} />
+                  <View style={[styles.bar, { height: perDay[i] > 0 ? 10 + (perDay[i] / maxDay) * 32 : 4, backgroundColor: on ? c.accent : hc.dark ? c.surface2 : '#E2E2E2' }]} />
                 </View>
                 <Text style={{ fontFamily: on ? fonts.bold : fonts.medium, fontSize: 13, color: on ? c.text : c.textMuted }}>{label}</Text>
               </Pressable>
@@ -244,7 +250,7 @@ export default function Trips() {
             initialCenter={fit[0]}
             initialZoom={12}
             routes={mapRoutes}
-            dots={tripDots}
+            dots={[...tripDots, ...stopMarks]}
             markers={markers}
             showLabels={compare}
             fitTo={fit}
@@ -268,6 +274,8 @@ export default function Trips() {
           onPlay={() => setPlaying(!playing)}
           disabled={!hasRoute}
           label={hasRoute ? new Date(tNow).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) : undefined}
+          speed={speed}
+          onSpeed={setSpeed}
         />
 
         {/* Totals, or the comparison table */}
@@ -340,7 +348,7 @@ export default function Trips() {
             </Card>
           );
         })}
-      </ScrollView>
+      </LockableScrollView>
     </SafeAreaView>
   );
 }

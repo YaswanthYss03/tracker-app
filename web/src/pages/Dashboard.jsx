@@ -6,7 +6,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useAlertsFeed, useDrivers, useFleet, useUnreadAlerts } from '../lib/data';
 import { fleetMarkers, fleetRows, countByGroup } from '../lib/fleet';
-import { ALERT_ICONS, SEVERE_ALERTS, agoText, alertText, dayLabel, isoDay, km, plateOrName } from '../lib/format';
+import { ALERT_ICONS, SEVERE_ALERTS, agoText, alertText, dayLabel, duration, isoDay, km, plateOrName } from '../lib/format';
 import { DUE_SOON_DAYS, daysUntil, dueText } from '../lib/service';
 import { GROUPS, STATUS_LABEL, STATUS_RING } from '../lib/status';
 import { BarChart, Sparkline } from '../components/Charts';
@@ -62,6 +62,11 @@ export default function Dashboard() {
   });
   const perDay = week.map((day) => reports.reduce((a, q) => a + (q.data?.data?.days || []).filter((x) => x.day === day).reduce((s, x) => s + x.distanceKm, 0), 0));
   const weekTotal = perDay.reduce((a, b) => a + b, 0);
+  const perVehicle = devices.slice(0, 25).map((d, i) => ({ d, t: reports[i]?.data?.data?.total }));
+  const fleetWeek = perVehicle.reduce((a, { t }) => ({
+    trips: a.trips + (t?.trips || 0), drivingS: a.drivingS + (t?.drivingS || 0), idleS: a.idleS + (t?.idleS || 0), maxSpeed: Math.max(a.maxSpeed, t?.maxSpeed || 0),
+  }), { trips: 0, drivingS: 0, idleS: 0, maxSpeed: 0 });
+  const weekLoading = reports.some((q) => q.isLoading);
   const yesterday = perDay[5];
   const deltaPct = yesterday > 0 ? Math.round(((kmToday - yesterday) / yesterday) * 100) : null;
 
@@ -104,7 +109,7 @@ export default function Dashboard() {
           <Button size="sm" icon="map" onClick={() => nav('/map')}>Live map</Button>
           <Button size="sm" icon="replay" onClick={() => nav('/replay')}>Replay today</Button>
           <Button size="sm" icon="users" onClick={() => nav('/drivers?add=1')}>Add driver</Button>
-          <Button variant="primary" size="sm" icon="carPlus" onClick={() => setAdding(true)}>Add vehicle</Button>
+          <Button variant="primary" size="sm" icon="carPlus" data-tour="add" onClick={() => setAdding(true)}>Add vehicle</Button>
         </div>
       </div>
 
@@ -116,6 +121,13 @@ export default function Dashboard() {
             extra={<Sparkline values={perDay} />}
             foot={<span className="row" style={{ gap: 6 }}>{deltaPct != null && <span className={`delta ${deltaPct >= 0 ? 'up' : 'down'}`}>{deltaPct >= 0 ? '+' : ''}{deltaPct}%</span>}{deltaPct != null ? 'vs yesterday' : `${km(weekTotal)} km in 7 days`}</span>} />
           <Kpi icon="bell" tone="amber" label="Alerts, last 24 h" value={alertsToday} to="/alerts" foot={unread ? <span className="row" style={{ gap: 6 }}><span className="delta down">{unread} new</span>since you last looked</span> : 'Nothing new'} />
+        </div>
+
+        <div className="grid c4">
+          <Kpi icon="trips" tone="grey" label="Distance, 7 days" value={weekLoading ? '-' : km(weekTotal)} unit="km" to="/replay" foot={`${km(weekTotal / 7)} km a day across the fleet`} />
+          <Kpi icon="navigate" tone="grey" label="Trips, 7 days" value={weekLoading ? '-' : fleetWeek.trips} to="/replay" foot={total ? `${(fleetWeek.trips / total).toFixed(1)} per vehicle` : 'No vehicles yet'} />
+          <Kpi icon="clock" tone="green" label="Riding time, 7 days" value={weekLoading ? '-' : duration(fleetWeek.drivingS)} to="/replay" foot={`Top speed ${fleetWeek.maxSpeed} km/h`} />
+          <Kpi icon="pause" tone="amber" label="Idle, engine on" value={weekLoading ? '-' : duration(fleetWeek.idleS)} to="/replay" foot={`${drivers.length} ${drivers.length === 1 ? 'driver' : 'drivers'} on the team`} />
         </div>
 
         <div className="grid main-side">
@@ -223,6 +235,33 @@ export default function Dashboard() {
             )}
           </Card>
         </div>
+
+        <Card pad={false} title="Vehicles, last 7 days" action={<span className="muted small">Click a vehicle to open it</span>}>
+          {total === 0 ? <Empty icon="car" title="No vehicles yet" /> : (
+            <div className="table-wrap">
+              <table className="table">
+                <thead><tr><th>Vehicle</th><th>Status</th><th className="num">Today</th><th className="num">Distance</th><th className="num hide-s">Trips</th><th className="num hide-s">Riding</th><th className="num hide-s">Idle</th><th className="num hide-s">Top speed</th></tr></thead>
+                <tbody>
+                  {perVehicle.map(({ d, t: x }) => {
+                    const g = rows.find((r) => r.d.id === d.id)?.g || 'offline';
+                    return (
+                      <tr key={d.id} className="click" onClick={() => nav(`/vehicles/${d.id}`)}>
+                        <td className="bold">{plateOrName(d)}</td>
+                        <td><span className="row" style={{ gap: 8 }}><span className={`dot ${g}`} />{STATUS_LABEL[g]}</span></td>
+                        <td className="num">{km(d.todayKm || 0)} km</td>
+                        <td className="num">{x ? `${km(x.distanceKm)} km` : '-'}</td>
+                        <td className="num hide-s">{x ? x.trips : '-'}</td>
+                        <td className="num hide-s">{x ? duration(x.drivingS) : '-'}</td>
+                        <td className="num hide-s">{x ? duration(x.idleS) : '-'}</td>
+                        <td className="num hide-s">{x ? `${x.maxSpeed} km/h` : '-'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
       </div>
       {adding && <VehicleForm onClose={() => setAdding(false)} />}
     </div>

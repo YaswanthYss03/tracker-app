@@ -145,6 +145,7 @@ async function startApp({ requireEmailVerification = false, adminDomain = '' } =
     registry,
     pushed,
     emails,
+    mailer,
     adminKey: 'a'.repeat(40),
     async close() {
       processors.stop();

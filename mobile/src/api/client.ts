@@ -90,6 +90,24 @@ export class ApiError extends Error {
   }
 }
 
+const NETWORK_MESSAGE = 'No internet connection. Check your network and try again.';
+const SERVER_MESSAGE = "We can't reach the server right now. Please try again in a moment.";
+const TIMEOUT_MS = 20000;
+
+/** fetch that gives up after 20 s (a bad connection can otherwise hang for minutes). */
+async function request(url: string, init: RequestInit): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } catch (err) {
+    const timedOut = (err as Error)?.name === 'AbortError';
+    throw new ApiError(timedOut ? 'The server is taking too long to answer. Please try again.' : NETWORK_MESSAGE, { code: 'NETWORK' });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 let refreshing: Promise<boolean> | null = null;
 
 /** New token pair. false (and logged out) if the session is gone; network errors keep the session. */
@@ -97,7 +115,7 @@ export function refreshSession(): Promise<boolean> {
   if (!session.refreshToken) return Promise.resolve(false);
   refreshing ??= (async () => {
     try {
-      const res = await fetch(`${BASE}/auth/refresh`, {
+      const res = await request(`${BASE}/auth/refresh`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ refreshToken: session.refreshToken }),
@@ -128,7 +146,7 @@ type Options = { method?: string; body?: unknown; auth?: boolean };
 /** api('/devices'), api('/devices/claim', { method: 'POST', body }) -> parsed JSON (null for 204). */
 export async function api<T = any>(path: string, { method = 'GET', body, auth = true }: Options = {}): Promise<T> {
   const send = () =>
-    fetch(BASE + path, {
+    request(BASE + path, {
       method,
       headers: {
         accept: 'application/json',
@@ -138,14 +156,9 @@ export async function api<T = any>(path: string, { method = 'GET', body, auth = 
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
 
-  let res: Response;
-  try {
-    if (auth && !session.accessToken && session.refreshToken) await refreshSession();
-    res = await send();
-    if (res.status === 401 && auth && session.refreshToken && (await refreshSession())) res = await send();
-  } catch {
-    throw new ApiError('No internet connection. Check your network and try again.', { code: 'NETWORK' });
-  }
+  if (auth && !session.accessToken && session.refreshToken) await refreshSession();
+  let res = await send();
+  if (res.status === 401 && auth && session.refreshToken && (await refreshSession())) res = await send();
   if (res.status === 204) return null as T;
 
   let json: any = null;
@@ -156,8 +169,10 @@ export async function api<T = any>(path: string, { method = 'GET', body, auth = 
   }
   if (!res.ok) {
     if (res.status === 401 && auth) await clearSession();
-    throw new ApiError(json?.error?.message || `Request failed (${res.status})`, {
-      code: json?.error?.code,
+    // A 5xx with no JSON body is the proxy or load balancer answering for a server that is down.
+    const unreachable = res.status >= 500 && !json?.error;
+    throw new ApiError(json?.error?.message || (unreachable ? SERVER_MESSAGE : `Request failed (${res.status})`), {
+      code: json?.error?.code || (unreachable ? 'SERVER' : undefined),
       status: res.status,
       details: json?.error?.details,
     });

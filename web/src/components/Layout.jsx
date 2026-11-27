@@ -2,18 +2,20 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth';
-import { FleetProvider, useFleet, useUnreadAlerts } from '../lib/data';
+import { FleetProvider, useUnreadAlerts } from '../lib/data';
 import { initials } from '../lib/format';
 import { setPref, usePref } from '../lib/prefs';
 import Icon from './Icon';
 import CommandPalette from './CommandPalette';
+import Tour from './Tour';
+import OfflineBanner from './OfflineBanner';
 import { IconButton, Menu, MenuItem } from './ui';
 
 const NAV = [
   ['/', 'Dashboard', 'dashboard', true],
-  ['/vehicles', 'Vehicles', 'car'],
-  ['/map', 'Live map', 'map'],
-  ['/replay', 'Replay', 'trips'],
+  ['/vehicles', 'Vehicles', 'car', false, 'vehicles'],
+  ['/map', 'Live map', 'map', false, 'map'],
+  ['/replay', 'Replay', 'trips', false, 'replay'],
   ['/alerts', 'Alerts', 'bell'],
   ['/drivers', 'Drivers', 'users'],
 ];
@@ -34,8 +36,8 @@ function Sidebar({ open, onClose }) {
     <aside className={`sidebar ${open ? 'open' : ''}`} aria-label="Main">
       <Brand />
       <nav className="nav-group">
-        {NAV.map(([to, label, icon, end]) => (
-          <NavLink key={to} to={to} end={end} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} onClick={onClose}>
+        {NAV.map(([to, label, icon, end, tour]) => (
+          <NavLink key={to} to={to} end={end} data-tour={tour} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} onClick={onClose}>
             <Icon name={icon} size={20} />
             {label}
             {to === '/alerts' && unread > 0 && <span className="count">{unread > 99 ? '99+' : unread}</span>}
@@ -44,7 +46,7 @@ function Sidebar({ open, onClose }) {
       </nav>
       <div className="nav-label">Account</div>
       <nav className="nav-group">
-        <NavLink to="/profile" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} onClick={onClose}><Icon name="user" size={20} />Profile and settings</NavLink>
+        <NavLink to="/profile" data-tour="profile" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} onClick={onClose}><Icon name="user" size={20} />Profile and settings</NavLink>
         <NavLink to="/contact" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} onClick={onClose}><Icon name="help" size={20} />Help and contact</NavLink>
       </nav>
       <div className="sidebar-foot">
@@ -73,7 +75,6 @@ function PaletteTrigger({ onOpen }) {
 
 function Topbar({ onMenu, onSearch }) {
   const { user, logout } = useAuth();
-  const { connected } = useFleet();
   const unread = useUnreadAlerts();
   const theme = usePref('theme');
   const nav = useNavigate();
@@ -83,9 +84,8 @@ function Topbar({ onMenu, onSearch }) {
       <IconButton className="menu-btn" icon="menu" label="Open menu" onClick={onMenu} />
       <PaletteTrigger onOpen={onSearch} />
       <div className="right row" style={{ gap: 6 }}>
-        {connected && <span className="live-dot" title="Live updates are on">Live</span>}
         <IconButton icon={dark ? 'sun' : 'moon'} label={dark ? 'Switch to light' : 'Switch to dark'} onClick={() => setPref('theme', dark ? 'light' : 'dark')} />
-        <IconButton icon="bell" label={unread ? `Alerts, ${unread} new` : 'Alerts'} badge={unread} onClick={() => nav('/alerts')} />
+        <IconButton icon="bell" data-tour="alerts" label={unread ? `Alerts, ${unread} new` : 'Alerts'} badge={unread} onClick={() => nav('/alerts')} />
         <Menu trigger={<button type="button" className="initials" style={{ width: 38, height: 38, fontSize: 13, border: 0, cursor: 'pointer', marginLeft: 4 }} aria-label="Account menu">{initials(user?.name, user?.email)}</button>}>
           <div style={{ padding: '8px 12px 6px' }}>
             <div className="bold ellipsis">{user?.name || 'Your account'}</div>
@@ -124,10 +124,12 @@ export function CustomerLayout() {
         <div className={`scrim ${open ? 'show' : ''}`} onClick={() => setOpen(false)} />
         <div className="main">
           <Topbar onMenu={() => setOpen(true)} onSearch={() => setSearch(true)} />
+          <OfflineBanner />
           <Outlet />
         </div>
       </div>
       <CommandPalette open={search} onClose={() => setSearch(false)} />
+      <Tour onMenu={setOpen} />
     </FleetProvider>
   );
 }

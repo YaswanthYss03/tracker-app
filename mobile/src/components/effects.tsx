@@ -24,7 +24,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import RNMaskedView from '@react-native-masked-view/masked-view';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
+import { P_ASPECT, P_PATH, P_VIEWBOX } from './pMark';
 import { brand } from '@/theme/colors';
 import { fonts } from '@/theme/typography';
 import { radius as radii, space, useColors } from '@/theme';
@@ -236,15 +237,12 @@ export function PLoader({ size = 92, label }: { size?: number; label?: string })
             />
           </Svg>
         </Animated.View>
-        <View style={{ width: inner, height: inner, borderRadius: inner / 2, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        <View style={{ width: inner, height: inner, borderRadius: inner / 2, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center' }}>
           <Animated.View style={letter}>
             <SweepText duration={1000} delay={700} color={brand.marigold}>
-              <Text
-                maxFontSizeMultiplier={1}
-                style={{ fontFamily: fonts.script, fontSize: inner * 0.72, lineHeight: inner * 1.05, color: c.text, paddingHorizontal: inner * 0.12, includeFontPadding: false }}
-              >
-                P
-              </Text>
+              <Svg width={inner * 0.62} height={(inner * 0.62) / P_ASPECT} viewBox={P_VIEWBOX}>
+                <Path d={P_PATH} transform="scale(1,-1)" fill={c.text} />
+              </Svg>
             </SweepText>
           </Animated.View>
         </View>

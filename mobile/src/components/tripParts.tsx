@@ -8,37 +8,53 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import Svg, { Circle, Defs, G, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { buildAxis, compactSpan } from '@/lib/speedAxis';
+import { SPEEDS, baseDuration } from '@/lib/replay';
 import { DIcon } from '@/components/DesignIcon';
 import { shadow, space, type, useColors } from '@/theme';
 
-/** Plays 0 → 1 over `durationMs` while `playing`; returns [progress, setProgress]. */
-export function usePlayback(playing: boolean, setPlaying: (v: boolean) => void, durationMs = 12_000) {
+let savedSpeed = 1;
+/** The chosen replay speed (1x..10x), kept while the app is open. */
+export function useReplaySpeed() {
+  const [speed, set] = useState(savedSpeed);
+  return [speed, (v: number) => { savedSpeed = v; set(v); }] as const;
+}
+
+/**
+ * Plays 0 → 1 while `playing`; returns [progress, setProgress]. The whole replay takes
+ * baseDuration(span) / speed, where `span` (ms covered by the route) is read from a ref.
+ */
+export function usePlayback(playing: boolean, setPlaying: (v: boolean) => void, span: { current: number }, speed = 1) {
   const [p, setP] = useState(0);
   const pRef = useRef(0);
   pRef.current = p;
+  const speedRef = useRef(speed);
+  speedRef.current = speed;
   useEffect(() => {
     if (!playing) return undefined;
     if (pRef.current >= 1) setP(0);
     let last = Date.now();
     const t = setInterval(() => {
       const now = Date.now();
+      const durationMs = Math.max(600, baseDuration(span.current) / speedRef.current);
       const next = Math.min(1, (pRef.current >= 1 ? 0 : pRef.current) + (now - last) / durationMs);
       last = now;
       setP(next);
       if (next >= 1) setPlaying(false);
     }, 50);
     return () => clearInterval(t);
-  }, [playing, durationMs, setPlaying]);
+  }, [playing, span, setPlaying]);
   return [p, setP] as const;
 }
 
-export function Scrubber({ value, onChange, playing, onPlay, label, disabled }: {
+export function Scrubber({ value, onChange, playing, onPlay, label, disabled, speed, onSpeed }: {
   value: number; onChange: (v: number) => void; playing: boolean; onPlay: () => void; label?: string; disabled?: boolean;
+  speed?: number; onSpeed?: (v: number) => void;
 }) {
   const c = useColors();
   const [w, setW] = useState(1);
   const pick = (e: GestureResponderEvent) => onChange(Math.max(0, Math.min(1, e.nativeEvent.locationX / w)));
   return (
+    <View style={{ gap: space.sm }}>
     <View style={styles.scrub}>
       <Pressable
         onPress={onPlay}
@@ -64,6 +80,27 @@ export function Scrubber({ value, onChange, playing, onPlay, label, disabled }: 
         <View style={[styles.knob, { left: value * w - 10, backgroundColor: c.accent }]} />
       </View>
       {label ? <Text style={[type.caption, { color: c.text, letterSpacing: 0, fontFamily: type.fieldLabel.fontFamily }]}>{label}</Text> : null}
+    </View>
+    {onSpeed ? (
+      <View style={styles.speeds} accessibilityRole="radiogroup" accessibilityLabel="Replay speed">
+        <Text style={[type.caption, { color: c.textMuted, letterSpacing: 0 }]}>Speed</Text>
+        {SPEEDS.map((s) => {
+          const on = speed === s;
+          return (
+            <Pressable
+              key={s}
+              onPress={() => onSpeed(s)}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: on }}
+              accessibilityLabel={`${s}x speed`}
+              style={[styles.speedChip, { backgroundColor: on ? c.text : c.dark ? c.surface : '#FFFFFF', borderColor: on ? c.text : c.border }]}
+            >
+              <Text style={{ fontFamily: type.fieldLabel.fontFamily, fontSize: 13, color: on ? (c.dark ? c.bg : '#FFFFFF') : c.text }}>{s}x</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    ) : null}
     </View>
   );
 }
@@ -227,6 +264,8 @@ export function SpeedGauge({ value, caption, size = 140 }: { value: number | nul
 }
 
 const styles = StyleSheet.create({
+  speeds: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  speedChip: { minWidth: 46, height: 34, paddingHorizontal: 10, borderRadius: 17, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   scrub: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   play: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   track: { flex: 1, height: 32, justifyContent: 'center' },

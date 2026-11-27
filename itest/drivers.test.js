@@ -34,8 +34,16 @@ test('create a driver for vehicles, edit, main/backup on a vehicle, delete', asy
   assert.equal(arun.licenceExpiry, '2027-11-12');
   assert.equal(arun.mainOf.length, 2);
 
+  // Same licence number again (other spacing, hyphen, case) is refused, for add and for edit.
+  res = await api('POST', '/api/v1/drivers', { token: t, body: { name: 'Copy', licenceNo: 'TN99-2011-0009931' } });
+  assert.equal(res.status, 409);
+  assert.match(res.body.error.message, /Arun Kumar/);
+
   res = await api('POST', '/api/v1/drivers', { token: t, body: { name: 'Karthik Raja', phone: '' } });
   const karthik = res.body.data;
+  assert.equal((await api('PATCH', `/api/v1/drivers/${karthik.id}`, { token: t, body: { licenceNo: 'tn992011 0009931' } })).status, 409);
+  assert.equal((await api('PATCH', `/api/v1/drivers/${arun.id}`, { token: t, body: { licenceNo: 'TN99 2011 0009931' } })).status, 200); // own number is fine
+  assert.equal((await api('PATCH', `/api/v1/drivers/${karthik.id}`, { token: t, body: { licenceNo: 'KA01 2015 0001234' } })).status, 200);
   assert.equal(karthik.phone, null);
 
   // Backup on v1, then swap.

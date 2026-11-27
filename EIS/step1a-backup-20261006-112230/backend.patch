@@ -1,0 +1,2086 @@
+diff --git a/src/modules/finance/approvals/approvals.service.spec.ts b/src/modules/finance/approvals/approvals.service.spec.ts
+index 9be8f88..2c5214b 100644
+--- a/src/modules/finance/approvals/approvals.service.spec.ts
++++ b/src/modules/finance/approvals/approvals.service.spec.ts
+@@ -1,14 +1,24 @@
+ jest.mock('../../../../generated/prisma/client', () => ({
+   PrismaClient: class {},
+-  Prisma: { Decimal: class Decimal { constructor(public value: unknown) {} } },
++  Prisma: {
++    Decimal: class Decimal {
++      constructor(public value: unknown) {}
++    },
++    PrismaClientKnownRequestError: class PrismaClientKnownRequestError extends Error {},
++  },
+ }));
+ jest.mock('@prisma/adapter-pg', () => ({ PrismaPg: class {} }));
+ 
+ import { Test, TestingModule } from '@nestjs/testing';
+-import { ConflictException } from '@nestjs/common';
+ import { PrismaService } from 'src/prisma/prisma.service';
+ import { FinanceAuditService } from '../finance-audit.service';
+ import { FinanceApprovalsService } from './approvals.service';
++import {
++  FINANCE_ACTIONABLE_STATUSES,
++  isFinanceActionable,
++} from './proposal-states';
++
++const ACTIONABLE_WHERE = { in: [...FINANCE_ACTIONABLE_STATUSES] };
+ 
+ describe('FinanceApprovalsService', () => {
+   let service: FinanceApprovalsService;
+@@ -19,12 +29,14 @@ describe('FinanceApprovalsService', () => {
+     prisma = {
+       purchase_order_proposals: {
+         findUnique: jest.fn(),
++        findMany: jest.fn().mockResolvedValue([]),
+         updateMany: jest.fn(),
+         findUniqueOrThrow: jest.fn(),
+         update: jest.fn(),
+       },
+       service_order_proposals: {
+         findUnique: jest.fn(),
++        findMany: jest.fn().mockResolvedValue([]),
+         updateMany: jest.fn(),
+         findUniqueOrThrow: jest.fn(),
+         update: jest.fn(),
+@@ -34,15 +46,29 @@ describe('FinanceApprovalsService', () => {
+         findFirst: jest.fn(),
+         findUniqueOrThrow: jest.fn(),
+       },
+-      finance_ledger_entries: { create: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
++      finance_ledger_entries: {
++        create: jest.fn(),
++        findMany: jest.fn().mockResolvedValue([]),
++      },
+       finance_proposal_assignments: {
+         deleteMany: jest.fn(),
+         create: jest.fn(),
+         findMany: jest.fn().mockResolvedValue([]),
+       },
+-      faculty: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+-      purchase_orders: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn() },
+-      service_orders: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn() },
++      faculty: {
++        findUnique: jest.fn(),
++        findMany: jest.fn().mockResolvedValue([]),
++      },
++      purchase_orders: {
++        findUnique: jest.fn(),
++        findFirst: jest.fn(),
++        create: jest.fn(),
++      },
++      service_orders: {
++        findUnique: jest.fn(),
++        findFirst: jest.fn(),
++        create: jest.fn(),
++      },
+       finance_order_tracking: { findUnique: jest.fn(), create: jest.fn() },
+       $transaction: jest.fn((cb: (tx: unknown) => unknown) => cb(prisma)),
+     };
+@@ -60,76 +86,447 @@ describe('FinanceApprovalsService', () => {
+   });
+ 
+   const ctx = { ip: '127.0.0.1', userAgent: 'test' };
++  const approve = { decision: 'approve', amount: 1000 } as any;
++  const reject = { decision: 'reject', remarks: 'Not needed' } as any;
+ 
+-  describe('decide — HoD-then-Finance ordering', () => {
++  /** Everything a successful SOP approval needs, starting from `status`. */
++  function primeSopApproval(status: string) {
++    prisma.service_order_proposals.findUnique.mockResolvedValue({
++      id: 1,
++      status,
++    });
++    prisma.finance_funds.findFirst.mockResolvedValue({
++      id: 9,
++      is_locked: false,
++    });
++    prisma.service_order_proposals.updateMany.mockResolvedValue({ count: 1 });
++    prisma.service_order_proposals.findUniqueOrThrow.mockResolvedValue({
++      id: 1,
++      status: 'finance_approved',
++    });
++    prisma.service_orders.findUnique.mockResolvedValue(null);
++    prisma.service_orders.findFirst.mockResolvedValue(null);
++    prisma.service_orders.create.mockResolvedValue({ id: 55 });
++    prisma.finance_order_tracking.findUnique.mockResolvedValue(null);
++    prisma.finance_funds.findUniqueOrThrow.mockResolvedValue({
++      available_amount: 5000,
++    });
++  }
++
++  describe('decide — which proposals Finance may act on', () => {
+     it('rejects with FINANCE_AWAITING_HOD when the HoD has not reviewed it yet', async () => {
+-      prisma.service_order_proposals.findUnique.mockResolvedValue({ id: 1, status: 'pending' });
++      prisma.service_order_proposals.findUnique.mockResolvedValue({
++        id: 1,
++        status: 'pending',
++      });
+ 
+       await expect(
+-        service.decide('sop', 1, { decision: 'approve', amount: 100 } as any, 42, ctx),
+-      ).rejects.toMatchObject({ response: { errorCode: 'FINANCE_AWAITING_HOD' } });
++        service.decide('sop', 1, approve, 42, ctx),
++      ).rejects.toMatchObject({
++        response: { errorCode: 'FINANCE_AWAITING_HOD' },
++      });
+       expect(prisma.$transaction).not.toHaveBeenCalled();
+     });
+ 
+-    it('rejects with FINANCE_PROPOSAL_ALREADY_DECIDED when Finance already acted', async () => {
+-      prisma.service_order_proposals.findUnique.mockResolvedValue({ id: 1, status: 'finance_approved' });
++    it.each(['finance_approved', 'rejected'])(
++      'refuses to approve a proposal that is already %s, without touching the fund',
++      async (status) => {
++        prisma.service_order_proposals.findUnique.mockResolvedValue({
++          id: 1,
++          status,
++        });
++
++        await expect(
++          service.decide('sop', 1, approve, 42, ctx),
++        ).rejects.toMatchObject({
++          response: { errorCode: 'FINANCE_PROPOSAL_ALREADY_DECIDED' },
++        });
++        expect(prisma.$transaction).not.toHaveBeenCalled();
++        expect(prisma.finance_ledger_entries.create).not.toHaveBeenCalled();
++      },
++    );
++
++    it.each(['finance_approved', 'rejected'])(
++      'refuses to reject a proposal that is already %s',
++      async (status) => {
++        prisma.purchase_order_proposals.findUnique.mockResolvedValue({
++          id: 1,
++          status,
++        });
++
++        await expect(
++          service.decide('pop', 1, reject, 42, ctx),
++        ).rejects.toMatchObject({
++          response: { errorCode: 'FINANCE_PROPOSAL_ALREADY_DECIDED' },
++        });
++        expect(
++          prisma.purchase_order_proposals.updateMany,
++        ).not.toHaveBeenCalled();
++      },
++    );
++
++    it('404s for a proposal that does not exist', async () => {
++      prisma.purchase_order_proposals.findUnique.mockResolvedValue(null);
+ 
+       await expect(
+-        service.decide('sop', 1, { decision: 'approve', amount: 100 } as any, 42, ctx),
+-      ).rejects.toMatchObject({ response: { errorCode: 'FINANCE_PROPOSAL_ALREADY_DECIDED' } });
++        service.decide('pop', 99, approve, 42, ctx),
++      ).rejects.toMatchObject({
++        response: { errorCode: 'FINANCE_PROPOSAL_NOT_FOUND' },
++      });
+     });
++  });
+ 
+-    it('approves a hod_approved proposal, debits the fund, and places the order', async () => {
+-      prisma.service_order_proposals.findUnique.mockResolvedValue({ id: 1, status: 'hod_approved' });
+-      prisma.finance_funds.findFirst.mockResolvedValue({ id: 9, is_locked: false });
+-      prisma.service_order_proposals.updateMany.mockResolvedValue({ count: 1 });
+-      prisma.service_order_proposals.findUniqueOrThrow.mockResolvedValue({ id: 1, status: 'finance_approved' });
+-      prisma.service_orders.findUnique.mockResolvedValue(null);
+-      prisma.service_orders.findFirst.mockResolvedValue(null);
+-      prisma.service_orders.create.mockResolvedValue({ id: 55 });
+-      prisma.finance_order_tracking.findUnique.mockResolvedValue(null);
+-      prisma.finance_funds.findUniqueOrThrow.mockResolvedValue({ available_amount: 5000 });
++  describe('decide — approval commits the fund atomically', () => {
++    it('HoD -> Finance: approves a hod_approved proposal, debits the fund, and places the order', async () => {
++      primeSopApproval('hod_approved');
+ 
+-      const result = await service.decide('sop', 1, { decision: 'approve', amount: 1000 } as any, 42, ctx);
++      const result = await service.decide('sop', 1, approve, 42, ctx);
+ 
++      // Claim, debit, order and audit all happen inside the one transaction.
++      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+       expect(prisma.service_order_proposals.updateMany).toHaveBeenCalledWith({
+-        where: { id: 1, status: 'hod_approved' },
+-        data: expect.objectContaining({ status: 'finance_approved' }),
++        where: { id: 1, status: ACTIONABLE_WHERE },
++        data: expect.objectContaining({
++          status: 'finance_approved',
++          finance_reviewed_by: 42,
++        }),
++      });
++      expect(prisma.finance_ledger_entries.create).toHaveBeenCalledTimes(1);
++      expect(prisma.finance_ledger_entries.create).toHaveBeenCalledWith({
++        data: expect.objectContaining({
++          fund_id: 9,
++          entry_type: 'debit',
++          source: 'sop_approval',
++          service_order_proposal_id: 1,
++          created_by_user_id: 42,
++        }),
++      });
++      expect(prisma.service_orders.create).toHaveBeenCalledTimes(1);
++      expect(prisma.finance_order_tracking.create).toHaveBeenCalledTimes(1);
++      expect(audit.record).toHaveBeenCalledWith(
++        expect.objectContaining({
++          action: 'sop.approved',
++          before: { status: 'hod_approved' },
++          tx: prisma,
++        }),
++      );
++      expect(result).toMatchObject({
++        status: 'finance_approved',
++        approved_amount: 1000,
+       });
+-      expect(prisma.finance_ledger_entries.create).toHaveBeenCalled();
++    });
++
++    it('treats a legacy principal_approved proposal exactly like hod_approved', async () => {
++      primeSopApproval('principal_approved');
++
++      const result = await service.decide('sop', 1, approve, 42, ctx);
++
++      expect(prisma.finance_ledger_entries.create).toHaveBeenCalledTimes(1);
+       expect(audit.record).toHaveBeenCalledWith(
+-        expect.objectContaining({ action: 'sop.approved', before: { status: 'hod_approved' } }),
++        expect.objectContaining({
++          action: 'sop.approved',
++          before: { status: 'principal_approved' },
++        }),
+       );
+-      expect(result).toMatchObject({ status: 'finance_approved', approved_amount: 1000 });
++      expect(result).toMatchObject({ status: 'finance_approved' });
+     });
+ 
+-    it('409s when a concurrent caller already claimed the hod_approved row', async () => {
+-      prisma.service_order_proposals.findUnique.mockResolvedValue({ id: 1, status: 'hod_approved' });
+-      prisma.finance_funds.findFirst.mockResolvedValue({ id: 9, is_locked: false });
++    it('debits a purchase proposal against the POP source and the purchase order', async () => {
++      prisma.purchase_order_proposals.findUnique.mockResolvedValue({
++        id: 7,
++        status: 'hod_approved',
++        purchase_indents: { quantity: 3 },
++      });
++      prisma.finance_funds.findFirst.mockResolvedValue({
++        id: 9,
++        is_locked: false,
++      });
++      prisma.purchase_order_proposals.updateMany.mockResolvedValue({
++        count: 1,
++      });
++      prisma.purchase_order_proposals.findUniqueOrThrow.mockResolvedValue({
++        id: 7,
++        status: 'finance_approved',
++      });
++      prisma.purchase_orders.findUnique.mockResolvedValue(null);
++      prisma.purchase_orders.findFirst.mockResolvedValue(null);
++      prisma.purchase_orders.create.mockResolvedValue({ id: 70 });
++      prisma.finance_order_tracking.findUnique.mockResolvedValue(null);
++      prisma.finance_funds.findUniqueOrThrow.mockResolvedValue({
++        available_amount: 100,
++      });
++
++      await service.decide('pop', 7, approve, 42, ctx);
++
++      expect(prisma.finance_ledger_entries.create).toHaveBeenCalledWith({
++        data: expect.objectContaining({
++          source: 'pop_approval',
++          purchase_order_proposal_id: 7,
++        }),
++      });
++      expect(prisma.finance_order_tracking.create).toHaveBeenCalledWith({
++        data: expect.objectContaining({
++          order_kind: 'purchase',
++          purchase_order_id: 70,
++          quantity_ordered: 3,
++        }),
++      });
++    });
++
++    it('surfaces the database overdraft rule as FINANCE_INSUFFICIENT_FUNDS', async () => {
++      primeSopApproval('hod_approved');
++      prisma.finance_ledger_entries.create.mockRejectedValue(
++        new Error('finance: insufficient funds — available 10, requested 1000'),
++      );
++
++      await expect(
++        service.decide('sop', 1, approve, 42, ctx),
++      ).rejects.toMatchObject({
++        response: { errorCode: 'FINANCE_INSUFFICIENT_FUNDS' },
++      });
++      // Nothing after the failed debit runs; the real transaction rolls the claim back.
++      expect(prisma.service_orders.create).not.toHaveBeenCalled();
++    });
++
++    it('requires an amount to approve', async () => {
++      prisma.service_order_proposals.findUnique.mockResolvedValue({
++        id: 1,
++        status: 'hod_approved',
++      });
++
++      await expect(
++        service.decide('sop', 1, { decision: 'approve' } as any, 42, ctx),
++      ).rejects.toMatchObject({ response: { errorCode: 'VALIDATION_ERROR' } });
++      expect(prisma.$transaction).not.toHaveBeenCalled();
++    });
++  });
++
++  describe('decide — a proposal is never committed twice', () => {
++    it('409s when a concurrent caller already claimed the row', async () => {
++      prisma.service_order_proposals.findUnique.mockResolvedValue({
++        id: 1,
++        status: 'hod_approved',
++      });
++      prisma.finance_funds.findFirst.mockResolvedValue({
++        id: 9,
++        is_locked: false,
++      });
+       prisma.service_order_proposals.updateMany.mockResolvedValue({ count: 0 });
+ 
+       await expect(
+-        service.decide('sop', 1, { decision: 'approve', amount: 1000 } as any, 42, ctx),
+-      ).rejects.toThrow('This proposal was decided by someone else a moment ago');
++        service.decide('sop', 1, approve, 42, ctx),
++      ).rejects.toMatchObject({
++        response: { errorCode: 'FINANCE_PROPOSAL_ALREADY_DECIDED' },
++      });
++      expect(prisma.finance_ledger_entries.create).not.toHaveBeenCalled();
+     });
+ 
+-    it('rejects a hod_approved proposal without touching the fund', async () => {
+-      prisma.service_order_proposals.findUnique.mockResolvedValue({ id: 1, status: 'hod_approved' });
+-      prisma.service_order_proposals.update.mockResolvedValue({ id: 1, status: 'rejected' });
++    it('two approvals arriving together produce exactly one debit', async () => {
++      primeSopApproval('hod_approved');
++      // Both requests read the row while it is still actionable; the database
++      // lets only the first conditional update match.
++      prisma.service_order_proposals.updateMany
++        .mockResolvedValueOnce({ count: 1 })
++        .mockResolvedValueOnce({ count: 0 });
+ 
+-      const result = await service.decide(
+-        'sop',
+-        1,
+-        { decision: 'reject', remarks: 'Not needed' } as any,
+-        42,
+-        ctx,
+-      );
++      const results = await Promise.allSettled([
++        service.decide('sop', 1, approve, 42, ctx),
++        service.decide('sop', 1, approve, 43, ctx),
++      ]);
++
++      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
++      expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
++      expect(prisma.finance_ledger_entries.create).toHaveBeenCalledTimes(1);
++      expect(prisma.service_orders.create).toHaveBeenCalledTimes(1);
++    });
++
++    it('a repeated approval after success is refused and adds no second debit', async () => {
++      primeSopApproval('hod_approved');
++      await service.decide('sop', 1, approve, 42, ctx);
+ 
++      // The retry now reads the committed status.
++      prisma.service_order_proposals.findUnique.mockResolvedValue({
++        id: 1,
++        status: 'finance_approved',
++      });
++      await expect(
++        service.decide('sop', 1, approve, 42, ctx),
++      ).rejects.toMatchObject({
++        response: { errorCode: 'FINANCE_PROPOSAL_ALREADY_DECIDED' },
++      });
++
++      expect(prisma.finance_ledger_entries.create).toHaveBeenCalledTimes(1);
++    });
++
++    it('refuses to debit a proposal that still carries an unreleased commitment', async () => {
++      // An actionable status with a standing debit — e.g. a row pushed back by
++      // some other route. The status claim alone would let this through.
++      primeSopApproval('hod_approved');
++      prisma.finance_ledger_entries.findMany.mockResolvedValue([
++        { entry_type: 'debit', amount: 5000 },
++      ]);
++
++      await expect(
++        service.decide('sop', 1, approve, 42, ctx),
++      ).rejects.toMatchObject({
++        response: { errorCode: 'FINANCE_ALREADY_DEBITED' },
++      });
++      expect(prisma.finance_ledger_entries.create).not.toHaveBeenCalled();
++      expect(prisma.service_orders.create).not.toHaveBeenCalled();
++    });
++
++    it('allows re-approval once the earlier commitment was fully released', async () => {
++      primeSopApproval('hod_approved');
++      prisma.finance_ledger_entries.findMany.mockResolvedValue([
++        { entry_type: 'debit', amount: 5000 },
++        { entry_type: 'reversal', amount: 5000 },
++      ]);
++
++      await service.decide('sop', 1, approve, 42, ctx);
++
++      expect(prisma.finance_ledger_entries.create).toHaveBeenCalledTimes(1);
++    });
++
++    it('refuses to commit money to an order that has been cancelled', async () => {
++      primeSopApproval('principal_approved');
++      prisma.service_orders.findUnique.mockResolvedValue({ id: 55 });
++      prisma.finance_order_tracking.findUnique.mockResolvedValue({
++        id: 3,
++        delivery_status: 'cancelled',
++      });
++
++      await expect(
++        service.decide('sop', 1, approve, 42, ctx),
++      ).rejects.toMatchObject({
++        response: { errorCode: 'FINANCE_ORDER_CANCELLED' },
++      });
++      expect(audit.record).not.toHaveBeenCalled();
++    });
++  });
++
++  describe('decide — Finance rejection', () => {
++    it('rejects an actionable proposal without touching the fund', async () => {
++      prisma.service_order_proposals.findUnique.mockResolvedValue({
++        id: 1,
++        status: 'hod_approved',
++      });
++      prisma.service_order_proposals.updateMany.mockResolvedValue({ count: 1 });
++
++      const result = await service.decide('sop', 1, reject, 42, ctx);
++
++      expect(prisma.service_order_proposals.updateMany).toHaveBeenCalledWith({
++        where: { id: 1, status: ACTIONABLE_WHERE },
++        data: expect.objectContaining({
++          status: 'rejected',
++          finance_reviewed_by: 42,
++          finance_remarks: 'Not needed',
++        }),
++      });
+       expect(prisma.finance_ledger_entries.create).not.toHaveBeenCalled();
+       expect(audit.record).toHaveBeenCalledWith(
+-        expect.objectContaining({ action: 'sop.rejected', before: { status: 'hod_approved' } }),
++        expect.objectContaining({
++          action: 'sop.rejected',
++          before: { status: 'hod_approved' },
++          after: { status: 'rejected', remarks: 'Not needed' },
++          tx: prisma,
++        }),
++      );
++      expect(result).toMatchObject({
++        status: 'rejected',
++        approved_amount: null,
++      });
++    });
++
++    it('cannot overwrite a decision that landed a moment earlier', async () => {
++      // Read as actionable, but another user approved it before this write.
++      prisma.purchase_order_proposals.findUnique.mockResolvedValue({
++        id: 1,
++        status: 'hod_approved',
++      });
++      prisma.purchase_order_proposals.updateMany.mockResolvedValue({
++        count: 0,
++      });
++
++      await expect(
++        service.decide('pop', 1, reject, 42, ctx),
++      ).rejects.toMatchObject({
++        response: { errorCode: 'FINANCE_PROPOSAL_ALREADY_DECIDED' },
++      });
++      expect(audit.record).not.toHaveBeenCalled();
++    });
++
++    it('refuses to reject a proposal that still has money committed', async () => {
++      prisma.purchase_order_proposals.findUnique.mockResolvedValue({
++        id: 1,
++        status: 'principal_approved',
++      });
++      prisma.purchase_order_proposals.updateMany.mockResolvedValue({
++        count: 1,
++      });
++      prisma.finance_ledger_entries.findMany.mockResolvedValue([
++        { entry_type: 'debit', amount: 250 },
++      ]);
++
++      await expect(
++        service.decide('pop', 1, reject, 42, ctx),
++      ).rejects.toMatchObject({
++        response: { errorCode: 'FINANCE_COMMITMENT_OUTSTANDING' },
++      });
++      expect(audit.record).not.toHaveBeenCalled();
++    });
++  });
++
++  describe("list — Finance's queue", () => {
++    const row = (id: number, status: string) => ({
++      id,
++      status,
++      hod_remarks: null,
++      finance_remarks: null,
++      hod_reviewed_at: null,
++      finance_reviewed_at: null,
++      vendors: null,
++      service_orders: null,
++      service_indents: {
++        ref: null,
++        title: `Service ${id}`,
++        service_description: 'desc',
++        quantity: '1',
++        needed_by: null,
++        created_at: new Date('2026-09-01T00:00:00.000Z'),
++        departments: { name: 'CSE' },
++        users: { email: 'secretary@sece.ac.in' },
++      },
++    });
++
++    it('returns every status so the page can count them, and the actionable set includes legacy principal_approved rows', async () => {
++      prisma.service_order_proposals.findMany.mockResolvedValue([
++        row(1, 'pending'),
++        row(2, 'hod_approved'),
++        row(3, 'principal_approved'),
++        row(4, 'finance_approved'),
++        row(5, 'rejected'),
++      ]);
++
++      const all = await service.list('sop');
++
++      expect(all.map((p) => p.status)).toEqual([
++        'pending',
++        'hod_approved',
++        'principal_approved',
++        'finance_approved',
++        'rejected',
++      ]);
++      expect(
++        all.filter((p) => isFinanceActionable(p.status)).map((p) => p.id),
++      ).toEqual([2, 3]);
++    });
++
++    it('passes an explicit status filter straight to the query', async () => {
++      await service.list('pop', 'principal_approved');
++
++      expect(prisma.purchase_order_proposals.findMany).toHaveBeenCalledWith(
++        expect.objectContaining({ where: { status: 'principal_approved' } }),
+       );
+-      expect(result).toMatchObject({ status: 'rejected', approved_amount: null });
+     });
+   });
+ });
+diff --git a/src/modules/finance/approvals/approvals.service.ts b/src/modules/finance/approvals/approvals.service.ts
+index 4422df6..d2c0c02 100644
+--- a/src/modules/finance/approvals/approvals.service.ts
++++ b/src/modules/finance/approvals/approvals.service.ts
+@@ -13,6 +13,7 @@ import { FinanceAuditService } from '../finance-audit.service';
+ import { DecideProposalDto } from './dto/decide-proposal.dto';
+ import { withDbRetry, isTransientDbError, dbUnavailable } from '../db-retry';
+ import type { RequestContext } from '../fund/fund.service';
++import { AWAITING_HOD_STATUS, FINANCE_ACTIONABLE_STATUSES, isFinanceActionable } from './proposal-states';
+ 
+ export type ProposalKind = 'pop' | 'sop';
+ 
+@@ -184,8 +185,9 @@ export class FinanceApprovalsService {
+   /**
+    * GET /finance/proposals?kind=pop|sop&status=
+    *
+-   * Finance's queue. `pending` is the actionable set: HoD has forwarded it and
+-   * Finance has not yet decided. Everything else is shown for context/history.
++   * Finance's queue. The actionable set is FINANCE_ACTIONABLE_STATUSES (the
++   * HoD has cleared it and Finance has not yet decided) — see proposal-states.
++   * Everything else is shown for context/history.
+    */
+   async list(kind: ProposalKind, status?: string): Promise<ProposalView[]> {
+     const where = status ? { status: status as never } : {};
+@@ -338,21 +340,16 @@ export class FinanceApprovalsService {
+       });
+     }
+ 
+-    // HoD reviews first, Finance second — matching this method's own
+-    // documented intent above ("pending is the actionable set: HoD has
+-    // forwarded it") and how the read side (PurchaseRequestsService/
+-    // ServiceRequestsService's deriveStatus()) already treats hod_approved
+-    // as "ready for Finance". Before this fix, both this method and
+-    // HodReview's own status==='pending' guard raced to claim a fresh
+-    // request — whichever staff member acted first silently locked the
+-    // other out, with no HoD stage at all if Finance won the race.
+-    if (proposal.status === 'pending') {
++    // HoD reviews first, Finance second. Finance may act only on a proposal
++    // the HoD has cleared — see proposal-states.ts for the one definition of
++    // that set, which the dashboard and the read side share.
++    if (proposal.status === AWAITING_HOD_STATUS) {
+       throw new ConflictException({
+         message: 'This proposal has not been reviewed by the HoD yet',
+         errorCode: 'FINANCE_AWAITING_HOD',
+       });
+     }
+-    if (proposal.status !== 'hod_approved') {
++    if (!isFinanceActionable(proposal.status)) {
+       throw new ConflictException({
+         message: `This proposal has already been ${proposal.status.replace(/_/g, ' ')} and cannot be decided again`,
+         errorCode: 'FINANCE_PROPOSAL_ALREADY_DECIDED',
+@@ -360,8 +357,7 @@ export class FinanceApprovalsService {
+     }
+ 
+     if (dto.decision === 'reject') {
+-      const updated = await this.rejectProposal(kind, id, dto, actorUserId, ctx);
+-      return updated;
++      return this.rejectProposal(kind, id, proposal.status, dto, actorUserId, ctx);
+     }
+ 
+     if (!dto.amount) {
+@@ -408,12 +404,12 @@ export class FinanceApprovalsService {
+ 
+     try {
+       // Safe to retry: the transaction's first statement claims the proposal
+-      // with `WHERE status = 'pending'`, so a replay after a committed attempt
+-      // matches zero rows and conflicts instead of debiting twice.
++      // with `WHERE status IN (actionable)`, so a replay after a committed
++      // attempt matches zero rows and conflicts instead of debiting twice.
+       return await withDbRetry(
+         () => this.prisma.$transaction(async (tx) => {
+         // Concurrency guard: flip the status only if it is still
+-        // `hod_approved`. This is the thing that makes double-approval
++        // Finance-actionable. This is the thing that makes double-approval
+         // impossible — the row lock serialises two simultaneous approvals,
+         // and the loser matches zero rows instead of debiting the fund a
+         // second time. It replaces the old "one debit per proposal" unique
+@@ -429,11 +425,11 @@ export class FinanceApprovalsService {
+         const claimed =
+           kind === 'pop'
+             ? await tx.purchase_order_proposals.updateMany({
+-                where: { id, status: 'hod_approved' },
++                where: { id, status: { in: [...FINANCE_ACTIONABLE_STATUSES] } },
+                 data: stampData,
+               })
+             : await tx.service_order_proposals.updateMany({
+-                where: { id, status: 'hod_approved' },
++                where: { id, status: { in: [...FINANCE_ACTIONABLE_STATUSES] } },
+                 data: stampData,
+               });
+ 
+@@ -449,6 +445,20 @@ export class FinanceApprovalsService {
+             ? await tx.purchase_order_proposals.findUniqueOrThrow({ where: { id } })
+             : await tx.service_order_proposals.findUniqueOrThrow({ where: { id } });
+ 
++        // Second line of defence against a double debit. The status claim
++        // above stops two approvals of the same actionable row, but it cannot
++        // know about a proposal that was pushed back to an actionable status
++        // while its earlier commitment is still standing. A proposal carrying
++        // an unreleased commitment is never debited again.
++        const alreadyCommitted = await this.netCommitment(tx, kind, id);
++        if (alreadyCommitted > 0) {
++          throw new ConflictException({
++            message:
++              'This proposal already has money committed from the fund. Release that commitment before approving it again.',
++            errorCode: 'FINANCE_ALREADY_DEBITED',
++          });
++        }
++
+         await tx.finance_ledger_entries.create({
+           data: {
+             fund_id: fund.id,
+@@ -534,8 +544,9 @@ export class FinanceApprovalsService {
+           // than as an untracked row someone has to notice and enable.
+           const tracked = await tx.finance_order_tracking.findUnique({
+             where: { purchase_order_id: order.id },
+-            select: { id: true },
++            select: { id: true, delivery_status: true },
+           });
++          this.assertOrderNotCancelled(tracked);
+           if (!tracked) {
+             await tx.finance_order_tracking.create({
+               data: {
+@@ -566,8 +577,9 @@ export class FinanceApprovalsService {
+ 
+           const tracked = await tx.finance_order_tracking.findUnique({
+             where: { service_order_id: order.id },
+-            select: { id: true },
++            select: { id: true, delivery_status: true },
+           });
++          this.assertOrderNotCancelled(tracked);
+           if (!tracked) {
+             await tx.finance_order_tracking.create({
+               data: {
+@@ -586,7 +598,7 @@ export class FinanceApprovalsService {
+           action: `${kind}.approved`,
+           entityType: kind === 'pop' ? 'purchase_order_proposal' : 'service_order_proposal',
+           entityId: id,
+-          before: { status: 'hod_approved' },
++          before: { status: proposal.status },
+           after: {
+             status: 'finance_approved',
+             amount: dto.amount,
+@@ -614,9 +626,55 @@ export class FinanceApprovalsService {
+     }
+   }
+ 
++  /**
++   * A proposal can already own an order from before the ledger existed. If
++   * that order has since been cancelled, approving now would commit money to
++   * something nobody is buying — refuse, and roll the claim back.
++   */
++  private assertOrderNotCancelled(tracked: { delivery_status: string } | null): void {
++    if (tracked?.delivery_status === 'cancelled') {
++      throw new ConflictException({
++        message:
++          'The order for this proposal has been cancelled, so money cannot be committed to it.',
++        errorCode: 'FINANCE_ORDER_CANCELLED',
++      });
++    }
++  }
++
++  /**
++   * What is committed for one proposal right now: debits minus releases.
++   * Takes the transaction client so the answer is consistent with the claim
++   * made a statement earlier.
++   */
++  private async netCommitment(
++    client: Prisma.TransactionClient,
++    kind: ProposalKind,
++    id: number,
++  ): Promise<number> {
++    const rows = await client.finance_ledger_entries.findMany({
++      where: {
++        ...(kind === 'pop' ? { purchase_order_proposal_id: id } : { service_order_proposal_id: id }),
++        source: { in: [kind === 'pop' ? 'pop_approval' : 'sop_approval', 'order_cancellation'] },
++      },
++      select: { amount: true, entry_type: true },
++    });
++    return rows.reduce(
++      (net, r) => net + (r.entry_type === 'debit' ? Number(r.amount) : -Number(r.amount)),
++      0,
++    );
++  }
++
++  /**
++   * Finance rejection. Claimed with the same expected-status condition as an
++   * approval, inside one transaction with its audit row, so a rejection can
++   * never overwrite a decision that landed a moment earlier — in particular it
++   * can never turn a funded `finance_approved` proposal into `rejected` and
++   * strand the debit.
++   */
+   private async rejectProposal(
+     kind: ProposalKind,
+     id: number,
++    fromStatus: string,
+     dto: DecideProposalDto,
+     actorUserId: number,
+     ctx: RequestContext,
+@@ -627,24 +685,50 @@ export class FinanceApprovalsService {
+       finance_reviewed_at: new Date(),
+       finance_remarks: dto.remarks ?? null,
+     };
++    const where = { id, status: { in: [...FINANCE_ACTIONABLE_STATUSES] } };
+ 
+-    const updated =
+-      kind === 'pop'
+-        ? await this.prisma.purchase_order_proposals.update({ where: { id }, data })
+-        : await this.prisma.service_order_proposals.update({ where: { id }, data });
+-
+-    await this.audit.record({
+-      actorUserId,
+-      action: `${kind}.rejected`,
+-      entityType: kind === 'pop' ? 'purchase_order_proposal' : 'service_order_proposal',
+-      entityId: id,
+-      before: { status: 'hod_approved' },
+-      after: { status: 'rejected', remarks: dto.remarks },
+-      ipAddress: ctx.ip,
+-      userAgent: ctx.userAgent,
+-    });
++    try {
++      return await this.prisma.$transaction(async (tx) => {
++        const claimed =
++          kind === 'pop'
++            ? await tx.purchase_order_proposals.updateMany({ where, data })
++            : await tx.service_order_proposals.updateMany({ where, data });
++
++        if (claimed.count === 0) {
++          throw new ConflictException({
++            message: 'This proposal was decided by someone else a moment ago. Reload and try again.',
++            errorCode: 'FINANCE_PROPOSAL_ALREADY_DECIDED',
++          });
++        }
+ 
+-    return { id: updated.id, status: updated.status, approved_amount: null };
++        // Rejecting must not leave money committed behind a rejected proposal.
++        // Releasing a commitment is a separate, deliberate action.
++        const committed = await this.netCommitment(tx, kind, id);
++        if (committed > 0) {
++          throw new ConflictException({
++            message:
++              'This proposal still has money committed from the fund. Release that commitment before rejecting it.',
++            errorCode: 'FINANCE_COMMITMENT_OUTSTANDING',
++          });
++        }
++
++        await this.audit.record({
++          actorUserId,
++          action: `${kind}.rejected`,
++          entityType: kind === 'pop' ? 'purchase_order_proposal' : 'service_order_proposal',
++          entityId: id,
++          before: { status: fromStatus },
++          after: { status: 'rejected', remarks: dto.remarks },
++          ipAddress: ctx.ip,
++          userAgent: ctx.userAgent,
++          tx,
++        });
++
++        return { id, status: 'rejected' as const, approved_amount: null };
++      });
++    } catch (err) {
++      throw this.translate(err, `rejecting ${kind} ${id}`);
++    }
+   }
+ 
+   private translate(err: unknown, whileDoing: string): Error {
+diff --git a/src/modules/finance/dashboard/dashboard.service.ts b/src/modules/finance/dashboard/dashboard.service.ts
+index dc2a14f..6fd20b4 100644
+--- a/src/modules/finance/dashboard/dashboard.service.ts
++++ b/src/modules/finance/dashboard/dashboard.service.ts
+@@ -6,6 +6,11 @@ import {
+ } from 'generated/prisma/client';
+ import { PrismaService } from 'src/prisma/prisma.service';
+ import { TtlCache } from 'src/common/utils/ttl-cache.util';
++import {
++  AWAITING_HOD_STATUS,
++  FINANCE_ACTIONABLE_STATUSES,
++  countStatuses,
++} from '../approvals/proposal-states';
+ 
+ export interface FinanceFundSummary {
+   id: number;
+@@ -40,8 +45,16 @@ export interface FinanceDashboardView {
+   /** Per-year breakdown, so each year's own figures are visible too. */
+   fund_years: FinanceFundSummary[];
+   queues: {
++    /**
++     * Proposals Finance can decide right now — the same set the approval
++     * pages list as "awaiting your decision" and the decision endpoint
++     * accepts (FINANCE_ACTIONABLE_STATUSES).
++     */
+     pop_pending: number;
+     sop_pending: number;
++    /** Still with the HoD; shown for context, not actionable by Finance. */
++    pop_awaiting_hod: number;
++    sop_awaiting_hod: number;
+     pop_approved: number;
+     sop_approved: number;
+     rejected: number;
+@@ -131,8 +144,10 @@ export class FinanceDashboardService {
+       status: string,
+     ): number => groups.find((g) => g.status === status)?._count._all ?? 0;
+ 
+-    const popPending = countOf(popByStatus, 'pending');
+-    const sopPending = countOf(sopByStatus, 'pending');
++    const popPending = countStatuses(popByStatus, FINANCE_ACTIONABLE_STATUSES);
++    const sopPending = countStatuses(sopByStatus, FINANCE_ACTIONABLE_STATUSES);
++    const popAwaitingHod = countOf(popByStatus, AWAITING_HOD_STATUS);
++    const sopAwaitingHod = countOf(sopByStatus, AWAITING_HOD_STATUS);
+     const popApproved = countOf(popByStatus, 'finance_approved');
+     const sopApproved = countOf(sopByStatus, 'finance_approved');
+     const popRejected = countOf(popByStatus, 'rejected');
+@@ -234,6 +249,8 @@ export class FinanceDashboardService {
+       queues: {
+         pop_pending: popPending,
+         sop_pending: sopPending,
++        pop_awaiting_hod: popAwaitingHod,
++        sop_awaiting_hod: sopAwaitingHod,
+         pop_approved: popApproved,
+         sop_approved: sopApproved,
+         rejected: popRejected + sopRejected,
+diff --git a/src/modules/finance/tracking/tracking.service.ts b/src/modules/finance/tracking/tracking.service.ts
+index 4a3a588..0be926c 100644
+--- a/src/modules/finance/tracking/tracking.service.ts
++++ b/src/modules/finance/tracking/tracking.service.ts
+@@ -204,6 +204,31 @@ export class FinanceTrackingService {
+     });
+   }
+ 
++  /** What is still committed from the fund for the proposal behind one tracked order. */
++  private async unreleasedCommitment(tracking: {
++    order_kind: OrderKind;
++    purchase_order_id: number | null;
++    service_order_id: number | null;
++  }): Promise<number> {
++    const order =
++      tracking.order_kind === 'purchase'
++        ? tracking.purchase_order_id === null
++          ? null
++          : await this.prisma.purchase_orders.findUnique({
++              where: { id: tracking.purchase_order_id },
++              select: { proposal_id: true },
++            })
++        : tracking.service_order_id === null
++          ? null
++          : await this.prisma.service_orders.findUnique({
++              where: { id: tracking.service_order_id },
++              select: { proposal_id: true },
++            });
++    if (!order) return 0;
++    const debits = await this.debitMap(tracking.order_kind, [order.proposal_id]);
++    return debits.get(order.proposal_id) ?? 0;
++  }
++
+   /** Committed amount per proposal, net of reversals — see the same helper in
+    *  FinanceApprovalsService for why the raw debit alone would be wrong. */
+   private async debitMap(kind: OrderKind, proposalIds: number[]): Promise<Map<number, number>> {
+@@ -425,6 +450,21 @@ export class FinanceTrackingService {
+         },
+       });
+ 
++      // Cancelling an order does not, by itself, give the money back: no
++      // release/reversal workflow exists yet. Rather than let that pass
++      // silently, a cancellation that leaves a commitment standing is said so
++      // out loud — in the response, the audit trail and the server log — so
++      // someone can release it deliberately.
++      const unreleasedCommitment =
++        updated.delivery_status === 'cancelled'
++          ? await this.unreleasedCommitment(updated)
++          : 0;
++      if (unreleasedCommitment > 0) {
++        this.logger.warn(
++          `Order tracking ${id} was cancelled with ${unreleasedCommitment} still committed from the fund`,
++        );
++      }
++
+       await this.audit.record({
+         actorUserId,
+         action: 'tracking.updated',
+@@ -437,12 +477,17 @@ export class FinanceTrackingService {
+         after: {
+           delivery_status: updated.delivery_status,
+           quantity_delivered: updated.quantity_delivered,
++          ...(unreleasedCommitment > 0 ? { unreleased_commitment: unreleasedCommitment } : {}),
+         },
+         ipAddress: ctx.ip,
+         userAgent: ctx.userAgent,
+       });
+ 
+-      return { id: updated.id, delivery_status: updated.delivery_status };
++      return {
++        id: updated.id,
++        delivery_status: updated.delivery_status,
++        unreleased_commitment: unreleasedCommitment,
++      };
+     } catch (err) {
+       throw this.translate(err, 'updating order tracking');
+     }
+diff --git a/src/modules/principal-approvals/principal-approvals.controller.ts b/src/modules/principal-approvals/principal-approvals.controller.ts
+index 9319627..10ad599 100644
+--- a/src/modules/principal-approvals/principal-approvals.controller.ts
++++ b/src/modules/principal-approvals/principal-approvals.controller.ts
+@@ -1,9 +1,7 @@
+-import { Controller, Get, Param, ParseIntPipe, Patch, UseGuards } from '@nestjs/common';
++import { Controller, Get, GoneException, Param, ParseIntPipe, Patch, UseGuards } from '@nestjs/common';
+ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+ import { RolesGuard } from 'src/auth/guards/roles.guard';
+ import { Roles } from 'src/auth/decorators/roles.decorator';
+-import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
+-import type { JwtPayload } from 'src/auth/interfaces/jwt-payload.interface';
+ import { ROLES } from 'src/common/constants/roles.constant';
+ import { PrincipalApprovalsService } from './principal-approvals.service';
+ 
+@@ -13,29 +11,45 @@ import { PrincipalApprovalsService } from './principal-approvals.service';
+ export class PrincipalApprovalsController {
+   constructor(private readonly service: PrincipalApprovalsService) {}
+ 
+-  /** GET /principal-approvals/pending — purchase & service proposals HoD has cleared, awaiting Principal. */
++  /** GET /principal-approvals/pending — read-only view of purchase & service proposals the HoD has cleared and Finance has not yet decided. */
+   @Get('pending')
+   listPending() {
+     return this.service.listPending();
+   }
+ 
++  /**
++   * RETIRED (410 Gone). The Principal is not part of the POP/SOP workflow:
++   * the sequence is Requester -> HoD -> Finance, and Finance's decision is
++   * the one that commits money. These four routes used to let a Principal
++   * move or reject a proposal the HoD had already forwarded to Finance, which
++   * took it out of Finance's reach. They are kept, with their original role
++   * guard, only so an old client gets a clear answer instead of a 404.
++   */
+   @Patch('purchase/:id/approve')
+-  approvePurchase(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: JwtPayload) {
+-    return this.service.approvePurchase(id, user.sub);
++  approvePurchase(@Param('id', ParseIntPipe) _id: number): never {
++    return this.retired();
+   }
+ 
+   @Patch('purchase/:id/reject')
+-  rejectPurchase(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: JwtPayload) {
+-    return this.service.rejectPurchase(id, user.sub);
++  rejectPurchase(@Param('id', ParseIntPipe) _id: number): never {
++    return this.retired();
+   }
+ 
+   @Patch('service/:id/approve')
+-  approveService(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: JwtPayload) {
+-    return this.service.approveService(id, user.sub);
++  approveService(@Param('id', ParseIntPipe) _id: number): never {
++    return this.retired();
+   }
+ 
+   @Patch('service/:id/reject')
+-  rejectService(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: JwtPayload) {
+-    return this.service.rejectService(id, user.sub);
++  rejectService(@Param('id', ParseIntPipe) _id: number): never {
++    return this.retired();
++  }
++
++  private retired(): never {
++    throw new GoneException({
++      message:
++        'Principal approval is no longer part of the purchase/service proposal workflow. Proposals go from the HoD directly to Finance.',
++      errorCode: 'ENDPOINT_RETIRED',
++    });
+   }
+ }
+diff --git a/src/modules/principal-approvals/principal-approvals.service.ts b/src/modules/principal-approvals/principal-approvals.service.ts
+index 5a667a5..28bc4a3 100644
+--- a/src/modules/principal-approvals/principal-approvals.service.ts
++++ b/src/modules/principal-approvals/principal-approvals.service.ts
+@@ -1,4 +1,4 @@
+-import { ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
++import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+ import { PrismaService } from 'src/prisma/prisma.service';
+ import { Prisma } from '../../../generated/prisma/client';
+ 
+@@ -24,15 +24,15 @@ const REQUESTER_NAME_SQL = Prisma.sql`
+ `;
+ 
+ /**
+- * Principal-only Approvals - purchase & service proposals only (the only
+- * two approval chains that exist as real tables anywhere in the schema;
+- * see the design conversation for why events/policy-change/recruitment
+- * approvals aren't included). Flow: pending -> hod_approved ->
+- * principal_approved -> finance_approved (terminal), or rejected at any
+- * point. Principal's queue = status = 'hod_approved' with
+- * principal_reviewed_by still null. "Estimated amount" comes from the
+- * proposal's selected vendor's item_price (vendors.item_price) - often
+- * null, since a vendor isn't always chosen by the time HoD has approved.
++ * Read-only view, for the Principal, of purchase & service proposals the HoD
++ * has cleared and Finance has not yet decided.
++ *
++ * The Principal does not decide these: the workflow is Requester -> HoD ->
++ * Finance (see finance/approvals/proposal-states.ts). This service used to
++ * also move rows to `principal_approved`/`rejected`; those writes were removed
++ * because they took proposals out of Finance's queue. "Estimated amount" comes
++ * from the proposal's selected vendor's item_price (vendors.item_price) -
++ * often null, since a vendor isn't always chosen by the time HoD has approved.
+  */
+ @Injectable()
+ export class PrincipalApprovalsService {
+@@ -112,77 +112,4 @@ export class PrincipalApprovalsService {
+       });
+     }
+   }
+-
+-  async approvePurchase(id: number, principalUserId: number) {
+-    return this.reviewPurchase(id, principalUserId, 'principal_approved');
+-  }
+-
+-  async rejectPurchase(id: number, principalUserId: number) {
+-    return this.reviewPurchase(id, principalUserId, 'rejected');
+-  }
+-
+-  async approveService(id: number, principalUserId: number) {
+-    return this.reviewService(id, principalUserId, 'principal_approved');
+-  }
+-
+-  async rejectService(id: number, principalUserId: number) {
+-    return this.reviewService(id, principalUserId, 'rejected');
+-  }
+-
+-  private assertAwaitingPrincipal(existing: { status: string; principal_reviewed_by: number | null } | null) {
+-    if (!existing) {
+-      throw new NotFoundException({
+-        message: 'Approval request not found',
+-        errorCode: 'APPROVAL_NOT_FOUND',
+-      });
+-    }
+-    if (existing.status !== 'hod_approved' || existing.principal_reviewed_by !== null) {
+-      throw new ForbiddenException({
+-        message: 'This request is not awaiting Principal review',
+-        errorCode: 'NOT_AWAITING_PRINCIPAL_REVIEW',
+-      });
+-    }
+-  }
+-
+-  private async reviewPurchase(id: number, principalUserId: number, nextStatus: 'principal_approved' | 'rejected') {
+-    try {
+-      const existing = await this.prisma.purchase_order_proposals.findUnique({ where: { id } });
+-      this.assertAwaitingPrincipal(existing);
+-
+-      await this.prisma.purchase_order_proposals.update({
+-        where: { id },
+-        data: { status: nextStatus, principal_reviewed_by: principalUserId, principal_reviewed_at: new Date() },
+-      });
+-
+-      return { id, type: 'purchase' as const, status: nextStatus };
+-    } catch (err) {
+-      if (err instanceof NotFoundException || err instanceof ForbiddenException) throw err;
+-      this.logger.error(`DB error reviewing purchase proposal ${id}`, err);
+-      throw new InternalServerErrorException({
+-        message: 'Something went wrong. Please try again.',
+-        errorCode: 'INTERNAL_ERROR',
+-      });
+-    }
+-  }
+-
+-  private async reviewService(id: number, principalUserId: number, nextStatus: 'principal_approved' | 'rejected') {
+-    try {
+-      const existing = await this.prisma.service_order_proposals.findUnique({ where: { id } });
+-      this.assertAwaitingPrincipal(existing);
+-
+-      await this.prisma.service_order_proposals.update({
+-        where: { id },
+-        data: { status: nextStatus, principal_reviewed_by: principalUserId, principal_reviewed_at: new Date() },
+-      });
+-
+-      return { id, type: 'service' as const, status: nextStatus };
+-    } catch (err) {
+-      if (err instanceof NotFoundException || err instanceof ForbiddenException) throw err;
+-      this.logger.error(`DB error reviewing service proposal ${id}`, err);
+-      throw new InternalServerErrorException({
+-        message: 'Something went wrong. Please try again.',
+-        errorCode: 'INTERNAL_ERROR',
+-      });
+-    }
+-  }
+ }
+diff --git a/src/modules/procurement/purchase-order-proposals/dto/finance-review.dto.ts b/src/modules/procurement/purchase-order-proposals/dto/finance-review.dto.ts
+deleted file mode 100644
+index 570cf66..0000000
+--- a/src/modules/procurement/purchase-order-proposals/dto/finance-review.dto.ts
++++ /dev/null
+@@ -1,12 +0,0 @@
+-import { IsIn, IsInt } from 'class-validator';
+-import { proposal_status_enum } from '../../../../../generated/prisma/client';
+-
+-export class FinanceReviewDto {
+-  @IsInt()
+-  finance_reviewed_by: number;
+-
+-  @IsIn([proposal_status_enum.finance_approved, proposal_status_enum.rejected])
+-  status:
+-    | typeof proposal_status_enum.finance_approved
+-    | typeof proposal_status_enum.rejected;
+-}
+diff --git a/src/modules/procurement/purchase-order-proposals/dto/hod-review.dto.ts b/src/modules/procurement/purchase-order-proposals/dto/hod-review.dto.ts
+deleted file mode 100644
+index 4d17920..0000000
+--- a/src/modules/procurement/purchase-order-proposals/dto/hod-review.dto.ts
++++ /dev/null
+@@ -1,12 +0,0 @@
+-import { IsIn, IsInt } from 'class-validator';
+-import { proposal_status_enum } from '../../../../../generated/prisma/client';
+-
+-export class HodReviewDto {
+-  @IsInt()
+-  hod_reviewed_by: number;
+-
+-  @IsIn([proposal_status_enum.hod_approved, proposal_status_enum.rejected])
+-  status:
+-    | typeof proposal_status_enum.hod_approved
+-    | typeof proposal_status_enum.rejected;
+-}
+diff --git a/src/modules/procurement/purchase-order-proposals/purchase-order-proposals.controller.ts b/src/modules/procurement/purchase-order-proposals/purchase-order-proposals.controller.ts
+index c5a4e27..13b4f02 100644
+--- a/src/modules/procurement/purchase-order-proposals/purchase-order-proposals.controller.ts
++++ b/src/modules/procurement/purchase-order-proposals/purchase-order-proposals.controller.ts
+@@ -3,6 +3,7 @@ import {
+   Controller,
+   Delete,
+   Get,
++  GoneException,
+   HttpCode,
+   HttpStatus,
+   Param,
+@@ -19,8 +20,6 @@ import { ROLES } from 'src/common/constants/roles.constant';
+ import { PurchaseOrderProposalsService } from './purchase-order-proposals.service';
+ import { CreatePurchaseOrderProposalDto } from './dto/create-purchase-order-proposal.dto';
+ import { UpdatePurchaseOrderProposalDto } from './dto/update-purchase-order-proposal.dto';
+-import { FinanceReviewDto } from './dto/finance-review.dto';
+-import { HodReviewDto } from './dto/hod-review.dto';
+ 
+ @Controller('purchase-order-proposals')
+ @UseGuards(JwtAuthGuard, RolesGuard)
+@@ -48,42 +47,43 @@ export class PurchaseOrderProposalsController {
+   }
+ 
+   /**
+-   * PATCH /api/v1/purchase-order-proposals/:id/finance-review
++   * PATCH /api/v1/purchase-order-proposals/:id/finance-review — RETIRED (410 Gone).
+    *
+-   * Error responses:
+-   *  400 VALIDATION_ERROR                  – missing/invalid fields
+-   *  401 UNAUTHORIZED                      – missing/invalid access token
+-   *  403 FORBIDDEN                         – authenticated user is not an admin or finance
+-   *  404 PURCHASE_ORDER_PROPOSAL_NOT_FOUND – no proposal with the given id
+-   *  404 USER_NOT_FOUND                    – finance_reviewed_by does not exist
+-   *  422 INVALID_WORKFLOW_STATE            – proposal is not currently pending
+-   *  500 INTERNAL_ERROR                    – unexpected server failure
++   * This route used to stamp a proposal `finance_approved` straight from
++   * `pending`: no HoD step, no fund debit, no order, and the reviewer taken
++   * from the request body. Finance's decision now has exactly one
++   * implementation — POST /finance/proposals/pop/:id/decision — which
++   * commits the money in the same transaction. The route is kept (with its
++   * original role guard) only so an old client gets a clear, stable answer
++   * instead of a 404.
+    */
+   @Patch(':id/finance-review')
+   @Roles(ROLES.ADMIN, ROLES.FINANCE)
+-  financeReview(
+-    @Param('id', ParseIntPipe) id: number,
+-    @Body() dto: FinanceReviewDto,
+-  ) {
+-    return this.purchaseOrderProposalsService.financeReview(id, dto);
++  financeReview(@Param('id', ParseIntPipe) _id: number): never {
++    throw new GoneException({
++      message:
++        'This endpoint has been retired. Finance decisions are made through POST /finance/proposals/pop/:id/decision.',
++      errorCode: 'ENDPOINT_RETIRED',
++    });
+   }
+ 
+   /**
+-   * PATCH /api/v1/purchase-order-proposals/:id/hod-review
++   * PATCH /api/v1/purchase-order-proposals/:id/hod-review — RETIRED (410 Gone).
+    *
+-   * Error responses:
+-   *  400 VALIDATION_ERROR                  – missing/invalid fields
+-   *  401 UNAUTHORIZED                      – missing/invalid access token
+-   *  403 FORBIDDEN                         – authenticated user is not an admin or hod
+-   *  404 PURCHASE_ORDER_PROPOSAL_NOT_FOUND – no proposal with the given id
+-   *  404 USER_NOT_FOUND                    – hod_reviewed_by does not exist
+-   *  422 INVALID_WORKFLOW_STATE            – proposal is not currently finance_approved
+-   *  500 INTERNAL_ERROR                    – unexpected server failure
++   * This route moved a `finance_approved` proposal back to `hod_approved` or
++   * `rejected` — i.e. it reopened a proposal whose money was already
++   * committed. The HoD reviews first, through
++   * PATCH /me/purchase-requests/:id/hod-review, and nothing may move a
++   * proposal backwards once Finance has funded it.
+    */
+   @Patch(':id/hod-review')
+   @Roles(ROLES.ADMIN, ROLES.HOD)
+-  hodReview(@Param('id', ParseIntPipe) id: number, @Body() dto: HodReviewDto) {
+-    return this.purchaseOrderProposalsService.hodReview(id, dto);
++  hodReview(@Param('id', ParseIntPipe) _id: number): never {
++    throw new GoneException({
++      message:
++        'This endpoint has been retired. HoD review is done through PATCH /me/purchase-requests/:id/hod-review.',
++      errorCode: 'ENDPOINT_RETIRED',
++    });
+   }
+ 
+   /**
+diff --git a/src/modules/procurement/purchase-order-proposals/purchase-order-proposals.service.ts b/src/modules/procurement/purchase-order-proposals/purchase-order-proposals.service.ts
+index b950a58..7933d3d 100644
+--- a/src/modules/procurement/purchase-order-proposals/purchase-order-proposals.service.ts
++++ b/src/modules/procurement/purchase-order-proposals/purchase-order-proposals.service.ts
+@@ -4,14 +4,10 @@ import {
+   InternalServerErrorException,
+   Logger,
+   NotFoundException,
+-  UnprocessableEntityException,
+ } from '@nestjs/common';
+ import { PrismaService } from 'src/prisma/prisma.service';
+-import { proposal_status_enum } from '../../../../generated/prisma/client';
+ import { CreatePurchaseOrderProposalDto } from './dto/create-purchase-order-proposal.dto';
+ import { UpdatePurchaseOrderProposalDto } from './dto/update-purchase-order-proposal.dto';
+-import { FinanceReviewDto } from './dto/finance-review.dto';
+-import { HodReviewDto } from './dto/hod-review.dto';
+ 
+ @Injectable()
+ export class PurchaseOrderProposalsService {
+@@ -133,104 +129,6 @@ export class PurchaseOrderProposalsService {
+     }
+   }
+ 
+-  /**
+-   * PATCH /purchase-order-proposals/:id/finance-review
+-   *
+-   * Records the finance reviewer's decision. Only legal when the proposal is
+-   * currently `pending`. finance_reviewed_at is always server-set.
+-   *
+-   * Error cases:
+-   *  404 PURCHASE_ORDER_PROPOSAL_NOT_FOUND – no proposal with the given id
+-   *  404 USER_NOT_FOUND                    – finance_reviewed_by does not exist
+-   *  422 INVALID_WORKFLOW_STATE            – proposal is not currently `pending`
+-   */
+-  async financeReview(id: number, dto: FinanceReviewDto) {
+-    const proposal = await this.findById(id);
+-
+-    if (!proposal) {
+-      throw new NotFoundException({
+-        message: 'Purchase order proposal not found',
+-        errorCode: 'PURCHASE_ORDER_PROPOSAL_NOT_FOUND',
+-      });
+-    }
+-
+-    await this.assertUserExists(dto.finance_reviewed_by);
+-
+-    if (proposal.status !== proposal_status_enum.pending) {
+-      throw new UnprocessableEntityException({
+-        message:
+-          'Finance review can only be recorded while the proposal is pending',
+-        errorCode: 'INVALID_WORKFLOW_STATE',
+-      });
+-    }
+-
+-    try {
+-      return await this.prisma.purchase_order_proposals.update({
+-        where: { id },
+-        data: {
+-          finance_reviewed_by: dto.finance_reviewed_by,
+-          finance_reviewed_at: new Date(),
+-          status: dto.status,
+-        },
+-      });
+-    } catch (err) {
+-      this.logger.error('DB error while recording finance review', err);
+-      throw new InternalServerErrorException({
+-        message: 'Something went wrong. Please try again.',
+-        errorCode: 'INTERNAL_ERROR',
+-      });
+-    }
+-  }
+-
+-  /**
+-   * PATCH /purchase-order-proposals/:id/hod-review
+-   *
+-   * Records the HoD reviewer's decision. Only legal when the proposal is
+-   * currently `finance_approved`. hod_reviewed_at is always server-set.
+-   *
+-   * Error cases:
+-   *  404 PURCHASE_ORDER_PROPOSAL_NOT_FOUND – no proposal with the given id
+-   *  404 USER_NOT_FOUND                    – hod_reviewed_by does not exist
+-   *  422 INVALID_WORKFLOW_STATE            – proposal is not currently `finance_approved`
+-   */
+-  async hodReview(id: number, dto: HodReviewDto) {
+-    const proposal = await this.findById(id);
+-
+-    if (!proposal) {
+-      throw new NotFoundException({
+-        message: 'Purchase order proposal not found',
+-        errorCode: 'PURCHASE_ORDER_PROPOSAL_NOT_FOUND',
+-      });
+-    }
+-
+-    await this.assertUserExists(dto.hod_reviewed_by);
+-
+-    if (proposal.status !== proposal_status_enum.finance_approved) {
+-      throw new UnprocessableEntityException({
+-        message:
+-          'HoD review can only be recorded once the proposal is finance approved',
+-        errorCode: 'INVALID_WORKFLOW_STATE',
+-      });
+-    }
+-
+-    try {
+-      return await this.prisma.purchase_order_proposals.update({
+-        where: { id },
+-        data: {
+-          hod_reviewed_by: dto.hod_reviewed_by,
+-          hod_reviewed_at: new Date(),
+-          status: dto.status,
+-        },
+-      });
+-    } catch (err) {
+-      this.logger.error('DB error while recording HoD review', err);
+-      throw new InternalServerErrorException({
+-        message: 'Something went wrong. Please try again.',
+-        errorCode: 'INTERNAL_ERROR',
+-      });
+-    }
+-  }
+-
+   /**
+    * DELETE /purchase-order-proposals/:id
+    *
+@@ -332,27 +230,6 @@ export class PurchaseOrderProposalsService {
+     }
+   }
+ 
+-  private async assertUserExists(userId: number) {
+-    let user: unknown;
+-
+-    try {
+-      user = await this.prisma.users.findUnique({ where: { id: userId } });
+-    } catch (err) {
+-      this.logger.error('DB error during user lookup', err);
+-      throw new InternalServerErrorException({
+-        message: 'Something went wrong. Please try again.',
+-        errorCode: 'INTERNAL_ERROR',
+-      });
+-    }
+-
+-    if (!user) {
+-      throw new NotFoundException({
+-        message: 'User not found',
+-        errorCode: 'USER_NOT_FOUND',
+-      });
+-    }
+-  }
+-
+   private async findById(id: number) {
+     try {
+       return await this.prisma.purchase_order_proposals.findUnique({
+diff --git a/src/modules/procurement/purchase-requests/purchase-requests.service.spec.ts b/src/modules/procurement/purchase-requests/purchase-requests.service.spec.ts
+index 7ebd07b..21d63ca 100644
+--- a/src/modules/procurement/purchase-requests/purchase-requests.service.spec.ts
++++ b/src/modules/procurement/purchase-requests/purchase-requests.service.spec.ts
+@@ -18,7 +18,9 @@ describe('PurchaseRequestsService', () => {
+       create: jest.Mock;
+       findMany: jest.Mock;
+       findUnique: jest.Mock;
++      findUniqueOrThrow: jest.Mock;
+       update: jest.Mock;
++      updateMany: jest.Mock;
+     };
+     purchase_orders: { create: jest.Mock };
+     $transaction: jest.Mock;
+@@ -62,10 +64,13 @@ describe('PurchaseRequestsService', () => {
+         create: jest.fn(),
+         findMany: jest.fn(),
+         findUnique: jest.fn(),
++        findUniqueOrThrow: jest.fn(),
+         update: jest.fn(),
++        updateMany: jest.fn(),
+       },
+       purchase_orders: { create: jest.fn() },
+-      $transaction: jest.fn((queries: Promise<unknown>[]) => Promise.all(queries)),
++      // hodReview runs an interactive transaction; the mock client doubles as `tx`.
++      $transaction: jest.fn((cb: (tx: unknown) => unknown) => cb(prisma)),
+     };
+ 
+     const module: TestingModule = await Test.createTestingModule({
+@@ -262,7 +267,7 @@ describe('PurchaseRequestsService', () => {
+       await expect(
+         service.hodReview(1, { decision: 'approved' } as any, { sub: 23, role: ROLES.HOD } as any),
+       ).rejects.toMatchObject({ response: { errorCode: 'NOT_YOUR_DEPARTMENT' } });
+-      expect(prisma.purchase_order_proposals.update).not.toHaveBeenCalled();
++      expect(prisma.purchase_order_proposals.updateMany).not.toHaveBeenCalled();
+     });
+ 
+     it('throws 422 when the proposal is not pending', async () => {
+@@ -285,7 +290,8 @@ describe('PurchaseRequestsService', () => {
+         status: 'pending',
+         purchase_indents: { department_id: 2 },
+       });
+-      prisma.purchase_order_proposals.update.mockResolvedValue(
++      prisma.purchase_order_proposals.updateMany.mockResolvedValue({ count: 1 });
++      prisma.purchase_order_proposals.findUniqueOrThrow.mockResolvedValue(
+         proposalRow({ status: 'hod_approved', hod_reviewed_by: 23 }),
+       );
+       prisma.purchase_indents.update.mockResolvedValue({});
+@@ -296,9 +302,10 @@ describe('PurchaseRequestsService', () => {
+         { sub: 23, role: ROLES.HOD } as any,
+       );
+ 
+-      expect(prisma.purchase_order_proposals.update).toHaveBeenCalledWith(
++      expect(prisma.purchase_order_proposals.updateMany).toHaveBeenCalledWith(
+         expect.objectContaining({
+-          where: { id: 1 },
++          // Conditional on still being 'pending' — the write itself is the guard.
++          where: { id: 1, status: 'pending' },
+           data: {
+             status: 'hod_approved',
+             hod_reviewed_by: 23,
+@@ -321,7 +328,8 @@ describe('PurchaseRequestsService', () => {
+         status: 'pending',
+         purchase_indents: { department_id: 2 },
+       });
+-      prisma.purchase_order_proposals.update.mockResolvedValue(
++      prisma.purchase_order_proposals.updateMany.mockResolvedValue({ count: 1 });
++      prisma.purchase_order_proposals.findUniqueOrThrow.mockResolvedValue(
+         proposalRow({ status: 'rejected', hod_reviewed_by: 23 }),
+       );
+       prisma.purchase_indents.update.mockResolvedValue({});
+@@ -332,7 +340,7 @@ describe('PurchaseRequestsService', () => {
+         { sub: 23, role: ROLES.HOD } as any,
+       );
+ 
+-      expect(prisma.purchase_order_proposals.update).toHaveBeenCalledWith(
++      expect(prisma.purchase_order_proposals.updateMany).toHaveBeenCalledWith(
+         expect.objectContaining({
+           data: {
+             status: 'rejected',
+@@ -345,6 +353,81 @@ describe('PurchaseRequestsService', () => {
+     });
+   });
+ 
++  describe('hodReview — cannot move a proposal backwards or overwrite a later decision', () => {
++    const hodUser = { sub: 23, role: ROLES.HOD } as any;
++
++    it.each(['hod_approved', 'principal_approved', 'finance_approved', 'rejected'])(
++      'refuses a proposal that is already %s, so a funded proposal can never return to an earlier state',
++      async (status) => {
++        prisma.faculty.findUnique.mockResolvedValue({ id: 9, department_id: 2 });
++        prisma.purchase_order_proposals.findUnique.mockResolvedValue({
++          indent_id: 10,
++          status,
++          purchase_indents: { department_id: 2 },
++        });
++
++        await expect(
++          service.hodReview(1, { decision: 'rejected', remarks: 'x' } as any, hodUser),
++        ).rejects.toMatchObject({ response: { errorCode: 'INVALID_WORKFLOW_STATE' } });
++        expect(prisma.purchase_order_proposals.updateMany).not.toHaveBeenCalled();
++        expect(prisma.purchase_indents.update).not.toHaveBeenCalled();
++      },
++    );
++
++    it('loses cleanly when another decision lands between the read and the write', async () => {
++      prisma.faculty.findUnique.mockResolvedValue({ id: 9, department_id: 2 });
++      // Read as pending...
++      prisma.purchase_order_proposals.findUnique.mockResolvedValue({
++        indent_id: 10,
++        status: 'pending',
++        purchase_indents: { department_id: 2 },
++      });
++      // ...but the row is no longer pending by the time the write runs.
++      prisma.purchase_order_proposals.updateMany.mockResolvedValue({ count: 0 });
++
++      await expect(
++        service.hodReview(1, { decision: 'approved' } as any, hodUser),
++      ).rejects.toMatchObject({ response: { errorCode: 'INVALID_WORKFLOW_STATE' } });
++      expect(prisma.purchase_indents.update).not.toHaveBeenCalled();
++    });
++
++    it('records the authenticated HoD as reviewer, ignoring any id in the body', async () => {
++      prisma.faculty.findUnique.mockResolvedValue({ id: 9, department_id: 2 });
++      prisma.purchase_order_proposals.findUnique.mockResolvedValue({
++        indent_id: 10,
++        status: 'pending',
++        purchase_indents: { department_id: 2 },
++      });
++      prisma.purchase_order_proposals.updateMany.mockResolvedValue({ count: 1 });
++      prisma.purchase_order_proposals.findUniqueOrThrow.mockResolvedValue(
++        proposalRow({ status: 'hod_approved', hod_reviewed_by: 23 }),
++      );
++
++      await service.hodReview(1, { decision: 'approved', hod_reviewed_by: 999 } as any, hodUser);
++
++      expect(prisma.purchase_order_proposals.updateMany.mock.calls[0][0].data.hod_reviewed_by).toBe(23);
++    });
++  });
++
++  describe('requester-visible status follows the same state definitions', () => {
++    it.each([
++      ['pending', 'pending_hod'],
++      ['hod_approved', 'pending_finance'],
++      ['principal_approved', 'pending_finance'],
++      ['finance_approved', 'approved'],
++    ])('a %s proposal is shown to the requester as %s', async (status, shown) => {
++      prisma.purchase_order_proposals.findMany.mockResolvedValue([proposalRow({ status })]);
++
++      const result: any = await service.findAll(
++        { skip: 0, limit: 20, page: 1 } as any,
++        { sub: 1, role: ROLES.ADMIN } as any,
++      );
++      const rows = Array.isArray(result) ? result : result.data;
++
++      expect(rows[0].status).toBe(shown);
++    });
++  });
++
+   // financeReview/convert were removed from PurchaseRequestsService
+   // (2026-09-26, dead code — unreachable from any frontend page). Finance's
+   // real decision now goes through FinanceApprovalsService.decide(), which
+diff --git a/src/modules/procurement/purchase-requests/purchase-requests.service.ts b/src/modules/procurement/purchase-requests/purchase-requests.service.ts
+index 90becae..730fb1e 100644
+--- a/src/modules/procurement/purchase-requests/purchase-requests.service.ts
++++ b/src/modules/procurement/purchase-requests/purchase-requests.service.ts
+@@ -97,15 +97,10 @@ function deriveStatus(row: ProposalRow): string {
+   }
+   if (row.status === 'pending') return 'pending_hod';
+   if (row.status === 'hod_approved') return 'pending_finance';
+-  // NOTE: `PrincipalApprovalsService` (a separate module) can also move a
+-  // 'hod_approved' row to 'principal_approved' independently of this
+-  // self-service flow. financeReview() below only accepts a row that is
+-  // still exactly 'hod_approved', so if Principal acts first on a request
+-  // created through this endpoint, Finance's own review would then 422
+-  // with INVALID_WORKFLOW_STATE — a real pre-existing conflict between the
+-  // two approval chains, out of scope to resolve here (unclear whether
+-  // Principal review is even meant to apply to Secretary-raised requests;
+-  // flagged to the user rather than guessed at).
++  // 'principal_approved' is a legacy status (the Principal is no longer part
++  // of this workflow and nothing writes it any more). Rows that still carry
++  // it were HoD-approved first and are decided by Finance exactly like
++  // 'hod_approved' — see finance/approvals/proposal-states.ts.
+   if (row.status === 'principal_approved') return 'pending_finance';
+   return 'approved'; // finance_approved
+ }
+@@ -307,22 +302,35 @@ export class PurchaseRequestsService {
+ 
+     const nextStatus =
+       dto.decision === 'approved' ? 'hod_approved' : 'rejected';
+-    const [proposal] = await this.prisma.$transaction([
+-      this.prisma.purchase_order_proposals.update({
+-        where: { id },
++    // The status check above is only a fast, friendly failure. The write
++    // itself is conditional on the row still being 'pending', so two reviews
++    // arriving together — or a review racing a Finance decision — cannot
++    // overwrite one another: the loser matches zero rows and is refused.
++    const proposal = await this.prisma.$transaction(async (tx) => {
++      const claimed = await tx.purchase_order_proposals.updateMany({
++        where: { id, status: 'pending' },
+         data: {
+           status: nextStatus,
+           hod_reviewed_by: currentUser.sub,
+           hod_reviewed_at: new Date(),
+           hod_remarks: dto.remarks,
+         },
+-        include: PROPOSAL_INCLUDE,
+-      }),
+-      this.prisma.purchase_indents.update({
++      });
++      if (claimed.count === 0) {
++        throw new UnprocessableEntityException({
++          message: 'This request is not awaiting HoD review',
++          errorCode: 'INVALID_WORKFLOW_STATE',
++        });
++      }
++      await tx.purchase_indents.update({
+         where: { id: existing.indent_id },
+         data: { status: nextStatus },
+-      }),
+-    ]);
++      });
++      return tx.purchase_order_proposals.findUniqueOrThrow({
++        where: { id },
++        include: PROPOSAL_INCLUDE,
++      });
++    });
+ 
+     this.logger.log(
+       `Purchase request ${id} ${dto.decision === 'approved' ? 'forwarded to Finance' : 'rejected'} by HoD user=${currentUser.sub}`,
+diff --git a/src/modules/procurement/service-order-proposals/dto/finance-review.dto.ts b/src/modules/procurement/service-order-proposals/dto/finance-review.dto.ts
+deleted file mode 100644
+index 570cf66..0000000
+--- a/src/modules/procurement/service-order-proposals/dto/finance-review.dto.ts
++++ /dev/null
+@@ -1,12 +0,0 @@
+-import { IsIn, IsInt } from 'class-validator';
+-import { proposal_status_enum } from '../../../../../generated/prisma/client';
+-
+-export class FinanceReviewDto {
+-  @IsInt()
+-  finance_reviewed_by: number;
+-
+-  @IsIn([proposal_status_enum.finance_approved, proposal_status_enum.rejected])
+-  status:
+-    | typeof proposal_status_enum.finance_approved
+-    | typeof proposal_status_enum.rejected;
+-}
+diff --git a/src/modules/procurement/service-order-proposals/dto/hod-review.dto.ts b/src/modules/procurement/service-order-proposals/dto/hod-review.dto.ts
+deleted file mode 100644
+index 4d17920..0000000
+--- a/src/modules/procurement/service-order-proposals/dto/hod-review.dto.ts
++++ /dev/null
+@@ -1,12 +0,0 @@
+-import { IsIn, IsInt } from 'class-validator';
+-import { proposal_status_enum } from '../../../../../generated/prisma/client';
+-
+-export class HodReviewDto {
+-  @IsInt()
+-  hod_reviewed_by: number;
+-
+-  @IsIn([proposal_status_enum.hod_approved, proposal_status_enum.rejected])
+-  status:
+-    | typeof proposal_status_enum.hod_approved
+-    | typeof proposal_status_enum.rejected;
+-}
+diff --git a/src/modules/procurement/service-order-proposals/service-order-proposals.controller.ts b/src/modules/procurement/service-order-proposals/service-order-proposals.controller.ts
+index 63ec4d6..f64f1b6 100644
+--- a/src/modules/procurement/service-order-proposals/service-order-proposals.controller.ts
++++ b/src/modules/procurement/service-order-proposals/service-order-proposals.controller.ts
+@@ -3,6 +3,7 @@ import {
+   Controller,
+   Delete,
+   Get,
++  GoneException,
+   HttpCode,
+   HttpStatus,
+   Param,
+@@ -19,8 +20,6 @@ import { ROLES } from 'src/common/constants/roles.constant';
+ import { ServiceOrderProposalsService } from './service-order-proposals.service';
+ import { CreateServiceOrderProposalDto } from './dto/create-service-order-proposal.dto';
+ import { UpdateServiceOrderProposalDto } from './dto/update-service-order-proposal.dto';
+-import { FinanceReviewDto } from './dto/finance-review.dto';
+-import { HodReviewDto } from './dto/hod-review.dto';
+ 
+ @Controller('service-order-proposals')
+ @UseGuards(JwtAuthGuard, RolesGuard)
+@@ -48,42 +47,43 @@ export class ServiceOrderProposalsController {
+   }
+ 
+   /**
+-   * PATCH /api/v1/service-order-proposals/:id/finance-review
++   * PATCH /api/v1/service-order-proposals/:id/finance-review — RETIRED (410 Gone).
+    *
+-   * Error responses:
+-   *  400 VALIDATION_ERROR                 – missing/invalid fields
+-   *  401 UNAUTHORIZED                     – missing/invalid access token
+-   *  403 FORBIDDEN                        – authenticated user is not an admin or finance
+-   *  404 SERVICE_ORDER_PROPOSAL_NOT_FOUND – no proposal with the given id
+-   *  404 USER_NOT_FOUND                   – finance_reviewed_by does not exist
+-   *  422 INVALID_WORKFLOW_STATE           – proposal is not currently pending
+-   *  500 INTERNAL_ERROR                   – unexpected server failure
++   * This route used to stamp a proposal `finance_approved` straight from
++   * `pending`: no HoD step, no fund debit, no order, and the reviewer taken
++   * from the request body. Finance's decision now has exactly one
++   * implementation — POST /finance/proposals/sop/:id/decision — which
++   * commits the money in the same transaction. The route is kept (with its
++   * original role guard) only so an old client gets a clear, stable answer
++   * instead of a 404.
+    */
+   @Patch(':id/finance-review')
+   @Roles(ROLES.ADMIN, ROLES.FINANCE)
+-  financeReview(
+-    @Param('id', ParseIntPipe) id: number,
+-    @Body() dto: FinanceReviewDto,
+-  ) {
+-    return this.serviceOrderProposalsService.financeReview(id, dto);
++  financeReview(@Param('id', ParseIntPipe) _id: number): never {
++    throw new GoneException({
++      message:
++        'This endpoint has been retired. Finance decisions are made through POST /finance/proposals/sop/:id/decision.',
++      errorCode: 'ENDPOINT_RETIRED',
++    });
+   }
+ 
+   /**
+-   * PATCH /api/v1/service-order-proposals/:id/hod-review
++   * PATCH /api/v1/service-order-proposals/:id/hod-review — RETIRED (410 Gone).
+    *
+-   * Error responses:
+-   *  400 VALIDATION_ERROR                 – missing/invalid fields
+-   *  401 UNAUTHORIZED                     – missing/invalid access token
+-   *  403 FORBIDDEN                        – authenticated user is not an admin or hod
+-   *  404 SERVICE_ORDER_PROPOSAL_NOT_FOUND – no proposal with the given id
+-   *  404 USER_NOT_FOUND                   – hod_reviewed_by does not exist
+-   *  422 INVALID_WORKFLOW_STATE           – proposal is not currently finance_approved
+-   *  500 INTERNAL_ERROR                   – unexpected server failure
++   * This route moved a `finance_approved` proposal back to `hod_approved` or
++   * `rejected` — i.e. it reopened a proposal whose money was already
++   * committed. The HoD reviews first, through
++   * PATCH /me/procurement-service-requests/:id/hod-review, and nothing may move a
++   * proposal backwards once Finance has funded it.
+    */
+   @Patch(':id/hod-review')
+   @Roles(ROLES.ADMIN, ROLES.HOD)
+-  hodReview(@Param('id', ParseIntPipe) id: number, @Body() dto: HodReviewDto) {
+-    return this.serviceOrderProposalsService.hodReview(id, dto);
++  hodReview(@Param('id', ParseIntPipe) _id: number): never {
++    throw new GoneException({
++      message:
++        'This endpoint has been retired. HoD review is done through PATCH /me/procurement-service-requests/:id/hod-review.',
++      errorCode: 'ENDPOINT_RETIRED',
++    });
+   }
+ 
+   /**
+diff --git a/src/modules/procurement/service-order-proposals/service-order-proposals.service.ts b/src/modules/procurement/service-order-proposals/service-order-proposals.service.ts
+index 9d33b4e..8610a14 100644
+--- a/src/modules/procurement/service-order-proposals/service-order-proposals.service.ts
++++ b/src/modules/procurement/service-order-proposals/service-order-proposals.service.ts
+@@ -4,14 +4,10 @@ import {
+   InternalServerErrorException,
+   Logger,
+   NotFoundException,
+-  UnprocessableEntityException,
+ } from '@nestjs/common';
+ import { PrismaService } from 'src/prisma/prisma.service';
+-import { proposal_status_enum } from '../../../../generated/prisma/client';
+ import { CreateServiceOrderProposalDto } from './dto/create-service-order-proposal.dto';
+ import { UpdateServiceOrderProposalDto } from './dto/update-service-order-proposal.dto';
+-import { FinanceReviewDto } from './dto/finance-review.dto';
+-import { HodReviewDto } from './dto/hod-review.dto';
+ 
+ @Injectable()
+ export class ServiceOrderProposalsService {
+@@ -130,104 +126,6 @@ export class ServiceOrderProposalsService {
+     }
+   }
+ 
+-  /**
+-   * PATCH /service-order-proposals/:id/finance-review
+-   *
+-   * Records the finance reviewer's decision. Only legal when the proposal is
+-   * currently `pending`. finance_reviewed_at is always server-set.
+-   *
+-   * Error cases:
+-   *  404 SERVICE_ORDER_PROPOSAL_NOT_FOUND – no proposal with the given id
+-   *  404 USER_NOT_FOUND                   – finance_reviewed_by does not exist
+-   *  422 INVALID_WORKFLOW_STATE           – proposal is not currently `pending`
+-   */
+-  async financeReview(id: number, dto: FinanceReviewDto) {
+-    const proposal = await this.findById(id);
+-
+-    if (!proposal) {
+-      throw new NotFoundException({
+-        message: 'Service order proposal not found',
+-        errorCode: 'SERVICE_ORDER_PROPOSAL_NOT_FOUND',
+-      });
+-    }
+-
+-    await this.assertUserExists(dto.finance_reviewed_by);
+-
+-    if (proposal.status !== proposal_status_enum.pending) {
+-      throw new UnprocessableEntityException({
+-        message:
+-          'Finance review can only be recorded while the proposal is pending',
+-        errorCode: 'INVALID_WORKFLOW_STATE',
+-      });
+-    }
+-
+-    try {
+-      return await this.prisma.service_order_proposals.update({
+-        where: { id },
+-        data: {
+-          finance_reviewed_by: dto.finance_reviewed_by,
+-          finance_reviewed_at: new Date(),
+-          status: dto.status,
+-        },
+-      });
+-    } catch (err) {
+-      this.logger.error('DB error while recording finance review', err);
+-      throw new InternalServerErrorException({
+-        message: 'Something went wrong. Please try again.',
+-        errorCode: 'INTERNAL_ERROR',
+-      });
+-    }
+-  }
+-
+-  /**
+-   * PATCH /service-order-proposals/:id/hod-review
+-   *
+-   * Records the HoD reviewer's decision. Only legal when the proposal is
+-   * currently `finance_approved`. hod_reviewed_at is always server-set.
+-   *
+-   * Error cases:
+-   *  404 SERVICE_ORDER_PROPOSAL_NOT_FOUND – no proposal with the given id
+-   *  404 USER_NOT_FOUND                   – hod_reviewed_by does not exist
+-   *  422 INVALID_WORKFLOW_STATE           – proposal is not currently `finance_approved`
+-   */
+-  async hodReview(id: number, dto: HodReviewDto) {
+-    const proposal = await this.findById(id);
+-
+-    if (!proposal) {
+-      throw new NotFoundException({
+-        message: 'Service order proposal not found',
+-        errorCode: 'SERVICE_ORDER_PROPOSAL_NOT_FOUND',
+-      });
+-    }
+-
+-    await this.assertUserExists(dto.hod_reviewed_by);
+-
+-    if (proposal.status !== proposal_status_enum.finance_approved) {
+-      throw new UnprocessableEntityException({
+-        message:
+-          'HoD review can only be recorded once the proposal is finance approved',
+-        errorCode: 'INVALID_WORKFLOW_STATE',
+-      });
+-    }
+-
+-    try {
+-      return await this.prisma.service_order_proposals.update({
+-        where: { id },
+-        data: {
+-          hod_reviewed_by: dto.hod_reviewed_by,
+-          hod_reviewed_at: new Date(),
+-          status: dto.status,
+-        },
+-      });
+-    } catch (err) {
+-      this.logger.error('DB error while recording HoD review', err);
+-      throw new InternalServerErrorException({
+-        message: 'Something went wrong. Please try again.',
+-        errorCode: 'INTERNAL_ERROR',
+-      });
+-    }
+-  }
+-
+   /**
+    * DELETE /service-order-proposals/:id
+    *
+@@ -329,27 +227,6 @@ export class ServiceOrderProposalsService {
+     }
+   }
+ 
+-  private async assertUserExists(userId: number) {
+-    let user: unknown;
+-
+-    try {
+-      user = await this.prisma.users.findUnique({ where: { id: userId } });
+-    } catch (err) {
+-      this.logger.error('DB error during user lookup', err);
+-      throw new InternalServerErrorException({
+-        message: 'Something went wrong. Please try again.',
+-        errorCode: 'INTERNAL_ERROR',
+-      });
+-    }
+-
+-    if (!user) {
+-      throw new NotFoundException({
+-        message: 'User not found',
+-        errorCode: 'USER_NOT_FOUND',
+-      });
+-    }
+-  }
+-
+   private async findById(id: number) {
+     try {
+       return await this.prisma.service_order_proposals.findUnique({
+diff --git a/src/modules/procurement/service-requests/service-requests.service.spec.ts b/src/modules/procurement/service-requests/service-requests.service.spec.ts
+index 49e45bb..4313bd9 100644
+--- a/src/modules/procurement/service-requests/service-requests.service.spec.ts
++++ b/src/modules/procurement/service-requests/service-requests.service.spec.ts
+@@ -19,7 +19,9 @@ describe('ServiceRequestsService', () => {
+       create: jest.Mock;
+       findMany: jest.Mock;
+       findUnique: jest.Mock;
++      findUniqueOrThrow: jest.Mock;
+       update: jest.Mock;
++      updateMany: jest.Mock;
+     };
+     service_orders: { create: jest.Mock };
+     $transaction: jest.Mock;
+@@ -64,10 +66,13 @@ describe('ServiceRequestsService', () => {
+         create: jest.fn(),
+         findMany: jest.fn(),
+         findUnique: jest.fn(),
++        findUniqueOrThrow: jest.fn(),
+         update: jest.fn(),
++        updateMany: jest.fn(),
+       },
+       service_orders: { create: jest.fn() },
+-      $transaction: jest.fn((queries: Promise<unknown>[]) => Promise.all(queries)),
++      // hodReview runs an interactive transaction; the mock client doubles as `tx`.
++      $transaction: jest.fn((cb: (tx: unknown) => unknown) => cb(prisma)),
+     };
+ 
+     const module: TestingModule = await Test.createTestingModule({
+@@ -219,7 +224,8 @@ describe('ServiceRequestsService', () => {
+         status: 'pending',
+         service_indents: { department_id: 2 },
+       });
+-      prisma.service_order_proposals.update.mockResolvedValue(
++      prisma.service_order_proposals.updateMany.mockResolvedValue({ count: 1 });
++      prisma.service_order_proposals.findUniqueOrThrow.mockResolvedValue(
+         proposalRow({ status: 'hod_approved', hod_reviewed_by: 23 }),
+       );
+       prisma.service_indents.update.mockResolvedValue({});
+@@ -230,12 +236,47 @@ describe('ServiceRequestsService', () => {
+         { sub: 23, role: ROLES.HOD } as any,
+       );
+ 
++      expect(prisma.service_order_proposals.updateMany).toHaveBeenCalledWith(
++        expect.objectContaining({ where: { id: 1, status: 'pending' } }),
++      );
+       expect(prisma.service_indents.update).toHaveBeenCalledWith({
+         where: { id: 10 },
+         data: { status: 'hod_approved' },
+       });
+       expect(result.status).toBe('pending_finance');
+     });
++
++    it.each(['principal_approved', 'finance_approved', 'rejected'])(
++      'refuses a proposal that is already %s',
++      async (status) => {
++        prisma.faculty.findUnique.mockResolvedValue({ id: 9, department_id: 2 });
++        prisma.service_order_proposals.findUnique.mockResolvedValue({
++          indent_id: 10,
++          status,
++          service_indents: { department_id: 2 },
++        });
++
++        await expect(
++          service.hodReview(1, { decision: 'rejected', remarks: 'x' } as any, { sub: 23, role: ROLES.HOD } as any),
++        ).rejects.toMatchObject({ response: { errorCode: 'INVALID_WORKFLOW_STATE' } });
++        expect(prisma.service_order_proposals.updateMany).not.toHaveBeenCalled();
++      },
++    );
++
++    it('loses cleanly when another decision lands between the read and the write', async () => {
++      prisma.faculty.findUnique.mockResolvedValue({ id: 9, department_id: 2 });
++      prisma.service_order_proposals.findUnique.mockResolvedValue({
++        indent_id: 10,
++        status: 'pending',
++        service_indents: { department_id: 2 },
++      });
++      prisma.service_order_proposals.updateMany.mockResolvedValue({ count: 0 });
++
++      await expect(
++        service.hodReview(1, { decision: 'approved' } as any, { sub: 23, role: ROLES.HOD } as any),
++      ).rejects.toMatchObject({ response: { errorCode: 'INVALID_WORKFLOW_STATE' } });
++      expect(prisma.service_indents.update).not.toHaveBeenCalled();
++    });
+   });
+ 
+   // financeReview/convert were removed from ServiceRequestsService
+diff --git a/src/modules/procurement/service-requests/service-requests.service.ts b/src/modules/procurement/service-requests/service-requests.service.ts
+index 2456e90..8eaaea7 100644
+--- a/src/modules/procurement/service-requests/service-requests.service.ts
++++ b/src/modules/procurement/service-requests/service-requests.service.ts
+@@ -74,12 +74,8 @@ export function deriveStatus(row: ProposalRow): string {
+   }
+   if (row.status === 'pending') return 'pending_hod';
+   if (row.status === 'hod_approved') return 'pending_finance';
+-  // See identical note in purchase-requests.service.ts's deriveStatus —
+-  // a separate PrincipalApprovalsService can move a row to
+-  // 'principal_approved'; financeReview() still gates on 'hod_approved'
+-  // only, a pre-existing cross-module conflict out of scope to resolve
+-  // here. Handled so it at least doesn't fall through to a misleading
+-  // 'approved' label.
++  // Legacy status, decided by Finance exactly like 'hod_approved' — see the
++  // identical note in purchase-requests.service.ts's deriveStatus.
+   if (row.status === 'principal_approved') return 'pending_finance';
+   return 'approved'; // finance_approved
+ }
+@@ -265,22 +261,35 @@ export class ServiceRequestsService {
+     }
+ 
+     const nextStatus = dto.decision === 'approved' ? 'hod_approved' : 'rejected';
+-    const [proposal] = await this.prisma.$transaction([
+-      this.prisma.service_order_proposals.update({
+-        where: { id },
++    // The status check above is only a fast, friendly failure. The write
++    // itself is conditional on the row still being 'pending', so two reviews
++    // arriving together — or a review racing a Finance decision — cannot
++    // overwrite one another: the loser matches zero rows and is refused.
++    const proposal = await this.prisma.$transaction(async (tx) => {
++      const claimed = await tx.service_order_proposals.updateMany({
++        where: { id, status: 'pending' },
+         data: {
+           status: nextStatus,
+           hod_reviewed_by: currentUser.sub,
+           hod_reviewed_at: new Date(),
+           hod_remarks: dto.remarks,
+         },
+-        include: PROPOSAL_INCLUDE,
+-      }),
+-      this.prisma.service_indents.update({
++      });
++      if (claimed.count === 0) {
++        throw new UnprocessableEntityException({
++          message: 'This request is not awaiting HoD review',
++          errorCode: 'INVALID_WORKFLOW_STATE',
++        });
++      }
++      await tx.service_indents.update({
+         where: { id: existing.indent_id },
+         data: { status: nextStatus },
+-      }),
+-    ]);
++      });
++      return tx.service_order_proposals.findUniqueOrThrow({
++        where: { id },
++        include: PROPOSAL_INCLUDE,
++      });
++    });
+ 
+     this.logger.log(
+       `Service request ${id} ${dto.decision === 'approved' ? 'forwarded to Finance' : 'rejected'} by HoD user=${currentUser.sub}`,

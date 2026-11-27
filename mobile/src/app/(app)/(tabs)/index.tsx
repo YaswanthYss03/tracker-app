@@ -21,6 +21,7 @@ import type { useHomeColors } from '@/theme/designHome';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import { DIcon, type DesignIconName } from '@/components/DesignIcon';
 import { DesignSheet } from '@/components/DesignSheet';
+import { useTourTarget } from '@/components/tour/store';
 import { fonts, type } from '@/theme';
 import { clamp, useResponsive } from '@/lib/responsive';
 import { useHomeColors as useColors } from '@/theme/designHome';
@@ -40,6 +41,7 @@ export default function Home() {
   const c = useColors();
   const { devices, stateOf, isLoading, isRefetching, error, refetch, offline, updatedAt } = useTrackers();
   const unread = useUnreadAlerts();
+  const bellRef = useTourTarget('alerts');
   const r = useResponsive();
   const mapH = Math.round(clamp(r.height * 0.19, 120, 190));
   const selectedId = useSelectedVehicle();
@@ -95,10 +97,10 @@ export default function Home() {
 
   const quickActions = (
     <View style={styles.actions} accessibilityRole="toolbar" accessibilityLabel="Quick actions">
-      <Quick icon="replay" label="Replay trips" onPress={() => router.navigate('/trips')} />
-      <Quick icon="carPlus" label="Add vehicle" onPress={() => router.push('/add-tracker')} />
-      <Quick icon="users" label="Drivers" onPress={() => router.push('/drivers')} />
-      <Quick icon="wrench" label="Service due" badge={dueSoon.length || undefined} onPress={() => setSheet('service')} />
+      <Quick icon="replay" label="Replay trips" title="Replay" onPress={() => router.navigate('/trips')} />
+      <Quick icon="carPlus" label="Add vehicle" title="Add vehicle" tourId="add" onPress={() => router.push('/add-tracker')} />
+      <Quick icon="users" label="Drivers" title="Drivers" onPress={() => router.push('/drivers')} />
+      <Quick icon="wrench" label="Service due" title="Services" badge={dueSoon.length || undefined} onPress={() => setSheet('service')} />
     </View>
   );
 
@@ -163,7 +165,7 @@ export default function Home() {
           <DIcon name="pin" size={20} strokeWidth={2.2} color="#FFFFFF" />
         </View>
         <Text maxFontSizeMultiplier={1} style={{ flex: 1, fontFamily: fonts.bold, fontSize: 24, lineHeight: 29, letterSpacing: -0.5, color: c.text }}>Pavakie</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel={unread ? `Alerts, ${unread} new` : 'Alerts'} onPress={() => router.push('/alerts')} style={[styles.bell, { backgroundColor: c.surface }]}>
+        <Pressable ref={bellRef} accessibilityRole="button" accessibilityLabel={unread ? `Alerts, ${unread} new` : 'Alerts'} onPress={() => router.push('/alerts')} style={[styles.bell, { backgroundColor: c.surface }]}>
           <DIcon name="bell" size={18} strokeWidth={1.9} />
           {unread > 0 && (
             <View style={[styles.badge, { top: 2, right: 1, backgroundColor: c.accent, borderColor: c.surface }]}>
@@ -210,7 +212,7 @@ export default function Home() {
               <Text style={{ fontFamily: fonts.bold, fontSize: 16, color: c.text, minHeight: 44, textAlignVertical: 'center' }}>No match — show all</Text>
             </Pressable>
           }
-          renderItem={({ item }) => <VehicleRow row={item} selected={item.d.id === selectedId} dueDays={dueDays.get(item.d.id)} onPress={() => open(item.d.id)} onDriver={() => openDriver(item.d)} />}
+          renderItem={({ item, index }) => <VehicleRow tourId={index === 0 ? 'vehicle' : undefined} row={item} selected={item.d.id === selectedId} dueDays={dueDays.get(item.d.id)} onPress={() => open(item.d.id)} onDriver={() => openDriver(item.d)} />}
         />
       )}
 
@@ -242,19 +244,23 @@ export default function Home() {
   );
 }
 
-function Quick({ icon, label, onPress, badge }: { icon: DesignIconName; label: string; onPress: () => void; badge?: number }) {
+function Quick({ icon, label, title, onPress, badge, tourId }: { icon: DesignIconName; label: string; title: string; onPress: () => void; badge?: number; tourId?: string }) {
   const c = useColors();
+  const tourRef = useTourTarget(tourId);
   const r = useResponsive();
   const size = r.tiny ? 44 : 50;
   return (
     <View style={{ flex: 1, alignItems: 'center' }}>
-      <Pressable accessibilityRole="button" accessibilityLabel={badge ? `${label}, ${badge}` : label} onPress={onPress} style={({ pressed }) => [styles.quick, { width: size, height: size, borderRadius: size / 2, backgroundColor: c.surface, opacity: pressed ? 0.8 : 1 }]}>
-        <DIcon name={icon} size={21} strokeWidth={2.5} color={c.accent} />
-        {badge ? (
-          <View style={[styles.badge, { top: -2, right: -2, backgroundColor: c.amber, borderColor: c.bg }]}>
-            <Text style={[styles.badgeText, { color: '#FFFFFF' }]}>{badge}</Text>
-          </View>
-        ) : null}
+      <Pressable ref={tourRef} accessibilityRole="button" accessibilityLabel={badge ? `${label}, ${badge}` : label} onPress={onPress} style={({ pressed }) => ({ alignItems: 'center', gap: 6, paddingHorizontal: 4, opacity: pressed ? 0.8 : 1 })}>
+        <View style={[styles.quick, { width: size, height: size, borderRadius: size / 2, backgroundColor: c.surface }]}>
+          <DIcon name={icon} size={21} strokeWidth={2.5} color={c.accent} />
+          {badge ? (
+            <View style={[styles.badge, { top: -2, right: -2, backgroundColor: c.amber, borderColor: c.bg }]}>
+              <Text style={[styles.badgeText, { color: '#FFFFFF' }]}>{badge}</Text>
+            </View>
+          ) : null}
+        </View>
+        <Text numberOfLines={1} maxFontSizeMultiplier={1.2} style={{ fontFamily: fonts.medium, fontSize: 12, lineHeight: 15, color: c.text }}>{title}</Text>
       </Pressable>
     </View>
   );
@@ -281,9 +287,10 @@ function Dot({ group, c }: { group: StatusGroup; c: HC }) {
 }
 
 /** Picture (+ service warning) · plate · driver + km today · speed + last update. */
-function VehicleRow({ row: { d, s, g }, selected, dueDays, onPress, onDriver }: { row: Row; selected: boolean; dueDays?: number; onPress: () => void; onDriver: () => void }) {
+function VehicleRow({ row: { d, s, g }, selected, dueDays, onPress, onDriver, tourId }: { tourId?: string; row: Row; selected: boolean; dueDays?: number; onPress: () => void; onDriver: () => void }) {
   const c = useColors();
   const r = useResponsive();
+  const tourRef = useTourTarget(tourId);
   const never = !s.lastSeenAt;
   const hasSpeed = g === 'moving' || g === 'stopped';
   const speed = hasSpeed ? String(s.speed ?? 0) : never ? 'Waiting' : STATUS_LABEL[g];
@@ -294,6 +301,7 @@ function VehicleRow({ row: { d, s, g }, selected, dueDays, onPress, onDriver }: 
   const overdue = dueDays != null && dueDays < 0;
   return (
     <Pressable
+      ref={tourRef}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${d.registrationNumber || 'No number plate'}, ${driver ? `driver ${driver}` : 'no driver'}, ${hasSpeed ? `${s.speed ?? 0} kilometres per hour` : speed}, ${ago}${svcWarn ? `, service ${dueText(dueDays!).toLowerCase()}` : ''}`}

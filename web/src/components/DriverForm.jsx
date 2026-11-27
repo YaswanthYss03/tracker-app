@@ -1,7 +1,7 @@
 // Add or edit a driver: photo or illustration, name, phone, licence, and which vehicles they drive.
 import { useRef, useState } from 'react';
 import { api, errorText } from '../lib/api';
-import { useFleet, useRefresh } from '../lib/data';
+import { useDrivers, useFleet, useRefresh } from '../lib/data';
 import { imageToBase64 } from '../lib/formHelpers';
 import { plateOrName } from '../lib/format';
 import { useToast } from '../lib/toast';
@@ -23,6 +23,7 @@ export default function DriverForm({ driver, onClose, onSaved }) {
   const editing = !!driver;
   const { devices } = useFleet();
   const mine = devices.filter((d) => d.role === 'owner');
+  const { data: drivers = [] } = useDrivers();
   const refresh = useRefresh();
   const toast = useToast();
   const file = useRef(null);
@@ -51,6 +52,10 @@ export default function DriverForm({ driver, onClose, onSaved }) {
     if (!name.trim()) errs.name = "Enter the driver's name";
     if (phone.trim() && !/^\+?[0-9 ()-]{6,20}$/.test(phone.trim())) errs.phone = 'Enter a valid phone number';
     if (licence.trim() && licence.trim().length < 4) errs.licence = 'Too short';
+    // No two drivers can share a licence number (spaces, hyphens and case do not count).
+    const key = (v) => v.toUpperCase().replace(/[\s-]/g, '');
+    const twin = licence.trim() ? drivers.find((d) => d.id !== driver?.id && d.licenceNo && key(d.licenceNo) === key(licence)) : null;
+    if (!errs.licence && twin) errs.licence = `${twin.name} already has this licence number`;
     setErrors(errs);
     if (Object.keys(errs).length) return;
     setBusy(true);

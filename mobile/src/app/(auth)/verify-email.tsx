@@ -5,7 +5,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/auth/AuthProvider';
 import { api, errorText } from '@/api/client';
-import { AppText, Button, ErrorBox, Screen } from '@/components/ui';
+import { AppText, Button, ErrorBox } from '@/components/ui';
+import { AuthScreen } from '@/components/AuthBackdrop';
 import { fonts } from '@/theme/typography';
 import { radius, space, useColors } from '@/theme';
 
@@ -63,7 +64,7 @@ export default function VerifyEmail() {
   }
 
   return (
-    <Screen>
+    <AuthScreen>
       <View style={{ alignItems: 'center', marginTop: space.xl, gap: space.md }}>
         <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' }}>
           <Ionicons name="mail-open-outline" size={40} color={c.onAccent} />
@@ -123,6 +124,6 @@ export default function VerifyEmail() {
       />
       <Button title="Use a different email" variant="ghost" onPress={() => router.back()} />
       <AppText variant="small" color="textMuted" center>Can't find it? Check your spam folder. The code expires in 15 minutes.</AppText>
-    </Screen>
+    </AuthScreen>
   );
 }

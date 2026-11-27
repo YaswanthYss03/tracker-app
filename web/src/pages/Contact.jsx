@@ -1,14 +1,12 @@
 // Contact us: call / WhatsApp / email (from the server's settings) and a message form.
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { api, errorText } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { useAppConfig } from '../lib/data';
 import Icon from '../components/Icon';
 import { Button, Card, ErrorBox, Input, Notice, PageHead, Textarea } from '../components/ui';
 
-export function useAppConfig() {
-  return useQuery({ queryKey: ['app-config'], queryFn: () => api('/app/config', { auth: false }), select: (r) => r.data, staleTime: 3_600_000 }).data || null;
-}
+export { useAppConfig };
 
 export default function Contact() {
   const { user } = useAuth();
@@ -43,6 +41,7 @@ export default function Contact() {
               <div className="form-grid"><Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required /><Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
               <Textarea label="How can we help?" value={message} onChange={(e) => setMessage(e.target.value)} required minLength={5} maxLength={2000} rows={6} />
               <ErrorBox error={error} />
+              <p className="tiny muted">We use your name and email only to reply to this message. See our <a href="/privacy" target="_blank" rel="noreferrer" className="link">Privacy Policy</a>.</p>
               <div className="row" style={{ justifyContent: 'flex-end' }}><Button type="submit" variant="primary" icon="send" loading={busy}>Send message</Button></div>
             </form>
           )}

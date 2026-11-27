@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { LayoutAnimation, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LockableScrollView } from '@/components/LockableScrollView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -70,7 +71,7 @@ export function Overview({ device, state, isOwner }: TabProps) {
       />
 
       {/* Short map and loose space at the bottom: the page scrolls a little on small phones. */}
-      <ScrollView bounces={false} overScrollMode="never" showsVerticalScrollIndicator={false} contentContainerStyle={styles.page}>
+      <LockableScrollView bounces={false} overScrollMode="never" showsVerticalScrollIndicator={false} contentContainerStyle={styles.page}>
         {/* Hero */}
         <View style={styles.hero}>
           <VehicleTile type={device.icon} color={device.color} width={r.small ? 72 : 88} height={r.small ? 52 : 62} dimmed={g === 'offline'} style={{ borderRadius: 18 }} />
@@ -165,7 +166,7 @@ export function Overview({ device, state, isOwner }: TabProps) {
             )}
           </>
         )}
-      </ScrollView>
+      </LockableScrollView>
 
       {/* Share: choose Live or Current, then the phone's share sheet (WhatsApp, etc.) */}
       <DesignSheet visible={shareOpen} onClose={() => setShareOpen(false)} title="Share location">
@@ -201,9 +202,9 @@ function DriverSection({ device, canEdit }: { device: TabProps['device']; canEdi
   const { data: drivers = [] } = useDrivers();
   const [pick, setPick] = useState<Slot | null>(null);
   const [conflict, setConflict] = useState<DriverRow | null>(null);
-  // Swap button: the arrows make a U-turn (a half flip) each time it is tapped.
+  // Swap button: the two arrows make a U-turn, a half turn round the circle, each time it is tapped.
   const turn = useSharedValue(0);
-  const turnStyle = useAnimatedStyle(() => ({ transform: [{ perspective: 260 }, { rotateX: `${turn.value}deg` }] }));
+  const turnStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${turn.value}deg` }] }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const main = device.mainDriver ?? null;
@@ -273,7 +274,7 @@ function DriverSection({ device, canEdit }: { device: TabProps['device']; canEdi
           <Pressable
             onPress={() => {
               if (busy) return;
-              turn.value = withTiming(turn.value + 180, { duration: 450, easing: Easing.inOut(Easing.cubic) });
+              turn.value = withTiming(turn.value + 180, { duration: 600, easing: Easing.inOut(Easing.cubic) });
               run(async () => { await patch(device.id, { mainDriverId: backup.id, backupDriverId: main.id }); });
             }}
             accessibilityRole="button"
@@ -281,7 +282,7 @@ function DriverSection({ device, canEdit }: { device: TabProps['device']; canEdi
             style={[styles.swapBtn, { backgroundColor: c.dark ? c.surface : '#FFFFFF', borderColor: c.bg }]}
           >
             <Animated.View style={turnStyle}>
-              <DIcon name="swapV" size={14} strokeWidth={2.2} color={c.accent} />
+              <DIcon name="uturn" size={16} strokeWidth={2.2} color={c.accent} />
             </Animated.View>
           </Pressable>
         </View>

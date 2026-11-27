@@ -18,6 +18,7 @@ import { radius, shadow, space, type, useColors } from '@/theme';
 import type { StatusGroup } from '@/lib/vehicleStatus';
 import { statusColor } from '@/lib/vehicleStatus';
 import { VehicleArt } from './VehicleArt';
+import { AnimatedVehicle } from './AnimatedVehicle';
 import { colorOf } from '@/lib/vehicleColors';
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -244,12 +245,14 @@ const TINT: Record<string, string> = {
 };
 
 /** Vehicle picture on a soft tinted tile. */
-export function VehicleTile({ type: kind, width = 76, height = 62, dimmed, deep, color, style }: {
+export function VehicleTile({ type: kind, width = 76, height = 62, dimmed, deep, color, animated = true, style }: {
   type?: string | null; width?: ViewStyle['width']; height?: number; dimmed?: boolean;
   /** Stronger tile and a bigger picture, for the Map sheet. */
   deep?: boolean;
   /** Body colour key: tints the tile in that colour. */
   color?: string | null;
+  /** Driving animation (default, also when dimmed); false uses the old still picture. */
+  animated?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   const c = useColors();
@@ -257,7 +260,15 @@ export function VehicleTile({ type: kind, width = 76, height = 62, dimmed, deep,
   return (
     <View style={[{ width, height, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: bg }, style]}>
       {deep && !c.dark ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.07)' }]} /> : null}
-      <VehicleArt type={kind} size={Math.round(height * (deep ? 0.92 : 0.8))} dimmed={dimmed} />
+      {animated ? (
+        // Drawn a little larger than the card and not clipped, on the top layer: the vehicle sits
+        // on the card's lower edge and may rise above it and spill over its sides.
+        <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, zIndex: 5, elevation: 5, height: Math.round(height * 1.2), top: Math.round(height * 0.86 - (116 / 140) * Math.round(height * 1.2)), opacity: dimmed ? 0.5 : 1 }}>
+          <AnimatedVehicle type={kind} color={colorOf(color)?.hex} height={Math.round(height * 1.2)} clip={false} />
+        </View>
+      ) : (
+        <VehicleArt type={kind} size={Math.round(height * (deep ? 0.92 : 0.8))} dimmed={dimmed} />
+      )}
     </View>
   );
 }

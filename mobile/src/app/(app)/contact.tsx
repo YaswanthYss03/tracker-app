@@ -1,9 +1,10 @@
 // Contact us: call / WhatsApp / email buttons (from the server's settings) + a message form.
 import { useState } from 'react';
-import { Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api, errorText } from '@/api/client';
+import { API_URL } from '@/config';
 import { useAuth } from '@/auth/AuthProvider';
 import { useAppConfig } from '@/lib/appConfig';
 import { AppText, Button, Card, ErrorBox, Field, IconButton, Screen } from '@/components/ui';
@@ -87,6 +88,7 @@ export default function Contact() {
             <Field label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" autoComplete="email" />
             <Field label="Message" value={message} onChangeText={setMessage} multiline numberOfLines={5} style={{ minHeight: 110, textAlignVertical: 'top' }} />
             <ErrorBox error={error} />
+            <AppText variant="caption" color="textMuted">We use your name and email only to reply to this message. See our <Text onPress={() => Linking.openURL(`${API_URL}/privacy`)} accessibilityRole="link" style={{ textDecorationLine: 'underline' }}>Privacy Policy</Text>.</AppText>
             <Button title="Send message" icon="send-outline" loading={busy} disabled={!name.trim() || !email.trim() || message.trim().length < 5} onPress={send} />
           </>
         )}

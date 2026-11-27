@@ -172,7 +172,7 @@ export function BarChart({ items, color = 'accent', scroll, height = 150, onPick
       {items.map((it, i) => {
         const Tag = onPick ? 'button' : 'div';
         return (
-          <Tag key={i} type={onPick ? 'button' : undefined} title={`${it.label}${it.sub ? ' ' + it.sub : ''}: ${it.text || it.value}`} className={`bar-col ${onPick ? 'pick' : ''}`} style={scroll ? { minWidth: 26, flex: '0 0 26px' } : undefined} onClick={onPick ? () => onPick(i) : undefined} aria-label={`${it.label}: ${it.text || it.value}`}>
+          <Tag key={i} type={onPick ? 'button' : undefined} title={`${it.label}${it.sub ? ' ' + it.sub : ''}: ${it.text || it.value}`} className={`bar-col ${onPick ? 'pick' : ''}`} style={scroll ? { minWidth: 26, flex: '1 0 26px' } : undefined} onClick={onPick ? () => onPick(i) : undefined} aria-label={`${it.label}: ${it.text || it.value}`}>
             <div className="v">{it.text}</div>
             <div className={`b ${!it.value ? '' : activeIndex === i ? 'on' : color === 'ink' ? 'ink' : 'on'}`} style={{ height: Math.max(4, (it.value / max) * (height - 56)) }} />
             <div className="l">{it.label}</div>

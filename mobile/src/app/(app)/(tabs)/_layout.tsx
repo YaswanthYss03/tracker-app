@@ -2,13 +2,32 @@
 // The active tab sits in a soft marigold pill. Alerts open from the bell at
 // the top of Home.
 import { Tabs } from 'expo-router/tabs';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { TourOverlay } from '@/components/tour/TourOverlay';
+import { TAB_BAR } from '@/components/tour/store';
 import { TrackersProvider } from '@/live/TrackersProvider';
 import { DIcon, type DesignIconName } from '@/components/DesignIcon';
 import { fonts } from '@/theme';
 import { useHomeColors as useColors } from '@/theme/designHome';
+
+// Plain tab button: no Android ripple circle, just a light dim while pressed.
+function TabButton({ children, style, onPress, onLongPress, testID, role, href, ...rest }: any) {
+  return (
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      testID={testID}
+      role={role}
+      aria-label={rest['aria-label']}
+      aria-selected={rest['aria-selected']}
+      style={({ pressed }) => [style, pressed && { opacity: 0.6 }]}
+    >
+      {children}
+    </Pressable>
+  );
+}
 
 function TabIcon(name: DesignIconName) {
   return ({ focused }: { focused: boolean }) => <PillIcon name={name} focused={focused} />;
@@ -41,6 +60,7 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   return (
     <TrackersProvider>
+      <View style={{ flex: 1 }}>
       <Tabs
         screenListeners={{ tabPress: () => Haptics.selectionAsync().catch(() => {}) }}
         screenOptions={{
@@ -48,19 +68,21 @@ export default function TabsLayout() {
           tabBarStyle: {
             backgroundColor: c.dark ? c.surface : '#FFFFFF',
             borderTopColor: c.border,
-            height: 70 + insets.bottom,
-            paddingTop: 6,
-            paddingBottom: insets.bottom + 8,
-            paddingHorizontal: 8,
+            height: TAB_BAR.height + insets.bottom,
+            paddingTop: TAB_BAR.padTop,
+            paddingBottom: insets.bottom + TAB_BAR.padBottom,
+            paddingHorizontal: TAB_BAR.padX,
           },
           sceneStyle: { backgroundColor: c.bg },
         }}
       >
-        <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: TabIcon('home'), tabBarLabel: TabLabel('Home') }} />
-        <Tabs.Screen name="map" options={{ title: 'Map', tabBarIcon: TabIcon('map'), tabBarLabel: TabLabel('Map') }} />
-        <Tabs.Screen name="trips" options={{ title: 'Replay', tabBarIcon: TabIcon('trips'), tabBarLabel: TabLabel('Replay') }} />
-        <Tabs.Screen name="account" options={{ title: 'Profile', tabBarIcon: TabIcon('user'), tabBarLabel: TabLabel('Profile') }} />
+        <Tabs.Screen name="index" options={{ tabBarButton: (props) => <TabButton {...props} />, title: 'Home', tabBarIcon: TabIcon('home'), tabBarLabel: TabLabel('Home') }} />
+        <Tabs.Screen name="map" options={{ tabBarButton: (props) => <TabButton {...props} />, title: 'Map', tabBarIcon: TabIcon('map'), tabBarLabel: TabLabel('Map') }} />
+        <Tabs.Screen name="trips" options={{ tabBarButton: (props) => <TabButton {...props} />, title: 'Replay', tabBarIcon: TabIcon('trips'), tabBarLabel: TabLabel('Replay') }} />
+        <Tabs.Screen name="account" options={{ tabBarButton: (props) => <TabButton {...props} />, title: 'Profile', tabBarIcon: TabIcon('user'), tabBarLabel: TabLabel('Profile') }} />
       </Tabs>
+      <TourOverlay />
+      </View>
     </TrackersProvider>
   );
 }

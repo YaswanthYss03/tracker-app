@@ -1,6 +1,7 @@
 // Live: map following the vehicle, big speed, status, ask the tracker, navigate, share.
 import { useState } from 'react';
-import { Linking, ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, StyleSheet, View } from 'react-native';
+import { LockableScrollView } from '@/components/LockableScrollView';
 import { api, errorText } from '@/api/client';
 import { dateTime, timeAgo } from '@/lib/format';
 import { AppMap } from '@/components/Map';
@@ -18,7 +19,7 @@ export function LiveTab({ device, state, isOwner }: TabProps) {
   const shareLive = () => shareLiveLocation(device);
 
   return (
-    <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.lg, paddingBottom: 48 }}>
+    <LockableScrollView contentContainerStyle={{ padding: space.lg, gap: space.lg, paddingBottom: 48 }}>
       <ExpandableMap height={250}>
         <AppMap
           initialCenter={hasPos ? { lat: state.lat!, lon: state.lon! } : undefined}
@@ -61,7 +62,7 @@ export function LiveTab({ device, state, isOwner }: TabProps) {
       </Row>
 
       {isOwner && <AskTracker deviceId={device.id} online={state.online} />}
-    </ScrollView>
+    </LockableScrollView>
   );
 }
 

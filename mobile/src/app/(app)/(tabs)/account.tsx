@@ -13,6 +13,7 @@ import { useDrivers } from '@/lib/drivers';
 import { useUnreadAlerts } from '@/lib/alertsSeen';
 import { initials } from '@/lib/format';
 import { setPref, usePref } from '@/lib/prefs';
+import { startTour } from '@/components/tour/store';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Card, RoundButton, Toggle, accentTint } from '@/components/kit';
 import { ErrorBox, Field, Segmented, Wordmark } from '@/components/ui';
@@ -21,6 +22,12 @@ import { radius, shadow, space, type, useColors } from '@/theme';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type AlertKey = 'offline' | 'longStop' | 'gpsLost' | 'quietHours';
+
+// Back to Home, then show the tour once its screen is on view again.
+function replayTour() {
+  router.navigate('/');
+  setTimeout(startTour, 450);
+}
 
 export default function Account() {
   const c = useColors();
@@ -105,6 +112,7 @@ export default function Account() {
         <Card padded={false}>
           <Row icon="car-sport-outline" label="Vehicles" onPress={() => router.push('/vehicles')} />
           <Row icon="people-outline" label="Drivers" onPress={() => router.push('/drivers')} />
+          <Row icon="compass-outline" label="Take the app tour" onPress={replayTour} />
           <Row icon="chatbubbles-outline" label="Contact us" onPress={() => router.push('/contact')} />
           <Row icon="briefcase-outline" label="Partner with us" onPress={() => router.push('/partner')} last />
         </Card>
@@ -118,6 +126,7 @@ export default function Account() {
         <Card padded={false}>
           <Row icon="shield-checkmark-outline" label="Privacy policy" onPress={() => Linking.openURL(`${API_URL}/privacy`)} />
           <Row icon="document-text-outline" label="Terms of service" onPress={() => Linking.openURL(`${API_URL}/terms`)} />
+          <Row icon="receipt-outline" label="Refund policy" onPress={() => Linking.openURL(`${API_URL}/refunds`)} />
           <Row icon="trash-outline" label="Delete my account" danger onPress={() => setConfirm('delete')} last />
         </Card>
 
